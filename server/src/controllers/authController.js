@@ -8,7 +8,7 @@ const { happyAvatar, isValidAvatar } = require('../utils/avatar');
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || '';
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
-const USER_COLUMNS = 'id, email, name, avatar, created_at';
+const USER_COLUMNS = 'id, email, name, avatar, default_club_id, created_at';
 const MIN_PASSWORD_LENGTH = 6;
 
 function toUser(row) {
@@ -17,6 +17,7 @@ function toUser(row) {
     email: row.email,
     name: row.name,
     avatar: row.avatar,
+    defaultClubId: row.default_club_id || null,
     createdAt: row.created_at,
   };
 }
@@ -256,6 +257,17 @@ async function loginWithGoogle(req, res) {
   }
 }
 
+async function setDefaultClub(req, res) {
+  try {
+    const { clubId } = req.body;
+    await db.query('UPDATE users SET default_club_id = $1, updated_at = NOW() WHERE id = $2', [clubId || null, req.user.id]);
+    res.json({ success: true, defaultClubId: clubId || null });
+  } catch (err) {
+    console.error('setDefaultClub error:', err);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
 module.exports = {
   register,
   login,
@@ -263,4 +275,5 @@ module.exports = {
   getMe,
   logout,
   updateMe,
+  setDefaultClub,
 };

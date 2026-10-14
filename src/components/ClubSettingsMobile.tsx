@@ -15,6 +15,7 @@ import {
   Trash2,
   User,
   Users,
+  Star,
 } from 'lucide-react';
 import { Avatar, MobileCard, MobilePage, ScreenHeader } from './MobileUi';
 import { doublesWinRate, playerDisplayId } from '../utils/playerStats';
@@ -97,6 +98,8 @@ export const ClubSettingsMobile: React.FC = () => {
   const {
     players,
     selectedClub,
+    defaultClubId,
+    setDefaultClub,
     setActiveTab,
     updateClub,
     addNewPlayer,
@@ -214,6 +217,72 @@ export const ClubSettingsMobile: React.FC = () => {
   return (
     <MobilePage>
       <ScreenHeader title="Cài đặt CLB" onBack={() => setActiveTab('home')} />
+
+      {/* 0. DEFAULT CLUB SETTING CARD */}
+      <MobileCard style={{ marginBottom: 14, padding: '14px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 200 }}>
+            <div style={{
+              width: 42,
+              height: 42,
+              borderRadius: 14,
+              background: defaultClubId === selectedClub.id ? '#fef3c7' : '#f1f5f9',
+              color: defaultClubId === selectedClub.id ? '#d97706' : '#64748b',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <Star size={22} fill={defaultClubId === selectedClub.id ? '#d97706' : 'none'} color={defaultClubId === selectedClub.id ? '#d97706' : '#64748b'} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>
+                Câu Lạc Bộ Mặc Định
+              </div>
+              <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: 2 }}>
+                Tự động mở CLB này đầu tiên mỗi khi bạn đăng nhập hoặc mở ứng dụng
+              </div>
+            </div>
+          </div>
+
+          <div>
+            {defaultClubId === selectedClub.id ? (
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                background: '#ecfdf5',
+                color: '#059669',
+                border: '1.5px solid #a7f3d0',
+                padding: '6px 14px',
+                borderRadius: 999,
+                fontSize: '0.8rem',
+                fontWeight: 800,
+              }}>
+                <Check size={15} strokeWidth={2.5} />
+                <span>Đây là CLB mặc định của bạn</span>
+              </div>
+            ) : (
+              <button
+                onClick={() => setDefaultClub(selectedClub.id)}
+                className="btn-primary"
+                style={{
+                  padding: '7px 16px',
+                  borderRadius: 999,
+                  fontSize: '0.82rem',
+                  fontWeight: 800,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <Star size={14} fill="#ffffff" />
+                <span>Đặt làm CLB mặc định</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </MobileCard>
 
       {/* 1. CLUB INFO + JOIN CODE */}
       <MobileCard style={{ marginBottom: 14 }}>

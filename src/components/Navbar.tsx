@@ -15,7 +15,8 @@ import {
   Play,
   Plus,
   Settings,
-  Pencil
+  Pencil,
+  Star
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -25,7 +26,7 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ onOpenProfile, onCreateClub, onJoinClub }) => {
-  const { activeTab, setActiveTab, lang, setLang, clubs, selectedClub, setSelectedClub, myPlayer } = usePickleball();
+  const { activeTab, setActiveTab, lang, setLang, clubs, selectedClub, setSelectedClub, defaultClubId, setDefaultClub, myPlayer } = usePickleball();
   const { currentUser, logout } = useAuth();
   const [showClubDropdown, setShowClubDropdown] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
@@ -230,36 +231,87 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenProfile, onCreateClub, onJ
                 <div style={{ padding: '6px 10px', fontSize: '0.72rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>
                   {lang === 'vi' ? 'Chọn Câu Lạc Bộ' : 'Switch Club'}
                 </div>
-                {clubs.map((c) => (
-                  <div
-                    key={c.id}
-                    onClick={() => {
-                      setSelectedClub(c);
-                      setShowClubDropdown(false);
-                    }}
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: 12,
-                      cursor: 'pointer',
-                      background: c.id === selectedClub.id ? '#ecfdf5' : 'transparent',
-                      color: c.id === selectedClub.id ? '#059669' : '#0f172a',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      fontSize: '0.88rem',
-                      fontWeight: 700,
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={{ fontSize: '1.25rem' }}>{c.id.includes('badminton') ? '🏸' : '🏓'}</span>
-                      <div>
-                        <div>{c.name}</div>
-                        <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>{c.location}</div>
+                {clubs.map((c) => {
+                  const isSelected = c.id === selectedClub.id;
+                  const isDefault = c.id === defaultClubId;
+
+                  return (
+                    <div
+                      key={c.id}
+                      onClick={() => {
+                        setSelectedClub(c);
+                        setShowClubDropdown(false);
+                      }}
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: 12,
+                        cursor: 'pointer',
+                        background: isSelected ? '#ecfdf5' : 'transparent',
+                        color: isSelected ? '#059669' : '#0f172a',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        fontSize: '0.88rem',
+                        fontWeight: 700,
+                        gap: 8,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                        <span style={{ fontSize: '1.25rem' }}>{c.id.includes('badminton') ? '🏸' : '🏓'}</span>
+                        <div style={{ minWidth: 0, overflow: 'hidden' }}>
+                          <div style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{c.name}</div>
+                          <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>{c.location}</div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {isDefault ? (
+                          <span
+                            title="Câu lạc bộ mặc định"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 3,
+                              background: '#fef3c7',
+                              color: '#b45309',
+                              padding: '2px 7px',
+                              borderRadius: 999,
+                              fontSize: '0.68rem',
+                              fontWeight: 800,
+                            }}
+                          >
+                            <Star size={11} fill="#b45309" color="#b45309" />
+                            <span>Mặc định</span>
+                          </span>
+                        ) : (
+                          <button
+                            title="Đặt làm CLB mặc định"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDefaultClub(c.id);
+                            }}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#94a3b8',
+                              cursor: 'pointer',
+                              padding: 4,
+                              borderRadius: 6,
+                              display: 'flex',
+                              alignItems: 'center',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.color = '#f59e0b')}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+                          >
+                            <Star size={14} />
+                          </button>
+                        )}
+
+                        {isSelected && <CheckCircle2 size={16} color="#059669" />}
                       </div>
                     </div>
-                    {c.id === selectedClub.id && <CheckCircle2 size={16} color="#059669" />}
-                  </div>
-                ))}
+                  );
+                })}
                 <button
                   onClick={() => {
                     setShowClubDropdown(false);

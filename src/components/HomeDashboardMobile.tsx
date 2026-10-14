@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { usePickleball } from '../context/PickleballContext';
 import { Player, LiveCourtState } from '../types/pickleball';
 import { api } from '../services/api';
-import { Settings, BarChart3, Trophy, ChevronRight, ChevronDown, Handshake, Check, Plus } from 'lucide-react';
+import { Settings, BarChart3, Trophy, ChevronRight, ChevronDown, Handshake, Check, Plus, Star } from 'lucide-react';
 import { Avatar, LeaderboardTable, MobileCard, MobilePage, PillToggle } from './MobileUi';
 
 interface HomeDashboardMobileProps {
@@ -75,7 +75,7 @@ const AwardName: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 );
 
 export const HomeDashboardMobile: React.FC<HomeDashboardMobileProps> = ({ onSelectPlayer, onCreateClub, onJoinClub }) => {
-  const { players, matches, clubs, selectedClub, setSelectedClub, setActiveTab } = usePickleball();
+  const { players, matches, clubs, selectedClub, setSelectedClub, defaultClubId, setDefaultClub, setActiveTab } = usePickleball();
   const [rankingMode, setRankingMode] = useState<'wins' | 'friendly'>('wins');
   const [showClubSheet, setShowClubSheet] = useState(false);
   const [liveCourts, setLiveCourts] = useState<LiveCourtState[]>([]);
@@ -495,6 +495,8 @@ export const HomeDashboardMobile: React.FC<HomeDashboardMobileProps> = ({ onSele
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {clubs.map((c) => {
                 const active = c.id === selectedClub.id;
+                const isDefault = c.id === defaultClubId;
+
                 return (
                   <button
                     key={c.id}
@@ -519,7 +521,51 @@ export const HomeDashboardMobile: React.FC<HomeDashboardMobileProps> = ({ onSele
                       <span style={{ display: 'block', fontSize: '0.9rem', fontWeight: 800, color: '#0f172a' }}>{c.name}</span>
                       <span style={{ display: 'block', fontSize: '0.72rem', color: '#64748b' }}>{c.location}</span>
                     </span>
-                    {active && <Check size={18} color="#059669" strokeWidth={3} />}
+
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {isDefault ? (
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 3,
+                            background: '#fef3c7',
+                            color: '#b45309',
+                            padding: '2px 8px',
+                            borderRadius: 999,
+                            fontSize: '0.66rem',
+                            fontWeight: 800,
+                          }}
+                        >
+                          <Star size={11} fill="#b45309" color="#b45309" />
+                          <span>Mặc định</span>
+                        </span>
+                      ) : (
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDefaultClub(c.id);
+                          }}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 3,
+                            padding: '3px 8px',
+                            borderRadius: 999,
+                            fontSize: '0.66rem',
+                            fontWeight: 700,
+                            color: '#64748b',
+                            background: '#f1f5f9',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <Star size={11} color="#f59e0b" />
+                          <span>Đặt mặc định</span>
+                        </span>
+                      )}
+
+                      {active && <Check size={18} color="#059669" strokeWidth={3} />}
+                    </span>
                   </button>
                 );
               })}

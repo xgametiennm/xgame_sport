@@ -122,6 +122,7 @@ export interface UserAccount {
   email: string;
   name: string;
   avatar?: string;
+  defaultClubId?: string | null;
   createdAt: string;
 }
 

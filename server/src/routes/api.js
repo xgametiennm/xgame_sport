@@ -31,6 +31,7 @@ router.post('/auth/google', authController.loginWithGoogle);
 router.post('/auth/logout', authController.logout);
 router.get('/auth/me', authController.getMe);
 router.patch('/auth/me', requireAuth, authController.updateMe);
+router.post('/auth/default-club', requireAuth, authController.setDefaultClub);
 
 // Clubs (the list is the caller's own clubs)
 router.get('/clubs', requireAuth, clubController.getClubs);

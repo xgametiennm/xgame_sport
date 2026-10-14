@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useState, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useState, useEffect, useMemo } from 'react';
 import { Player, MatchResult, ClubInfo, ClubRole, UserAccount } from '../types/pickleball';
 import { api, NewClubInput } from '../services/api';
 import { useAuth } from './AuthContext';
@@ -14,6 +14,8 @@ interface PickleballContextType {
   clubs: ClubInfo[];
   selectedClub: ClubInfo;
   setSelectedClub: (club: ClubInfo) => void;
+  defaultClubId: string | null;
+  setDefaultClub: (clubId: string) => Promise<void>;
   players: Player[];
   matches: MatchResult[];
   // The signed-in account's own member record in the selected club
@@ -80,10 +82,17 @@ export const PickleballProvider: React.FC<{ user: UserAccount; children: React.R
   const { logout, setCurrentUser } = useAuth();
 
   const [clubs, setClubs] = useState<ClubInfo[] | null>(null);
-  // The selected club is carried in the URL so a reload opens the same club
-  const [selectedClubId, setSelectedClubId] = useState<string | null>(() =>
-    new URLSearchParams(window.location.search).get(CLUB_QUERY_PARAM)
+  // Default club preference from localStorage or user profile
+  const [defaultClubId, setDefaultClubId] = useState<string | null>(() =>
+    localStorage.getItem('xgame_default_club_id') || user?.defaultClubId || null
   );
+
+  // The selected club is carried in the URL so a reload opens the same club, or falls back to defaultClubId
+  const [selectedClubId, setSelectedClubId] = useState<string | null>(() => {
+    const urlParam = new URLSearchParams(window.location.search).get(CLUB_QUERY_PARAM);
+    if (urlParam) return urlParam;
+    return localStorage.getItem('xgame_default_club_id') || user?.defaultClubId || null;
+  });
   const [players, setPlayers] = useState<Player[]>([]);
   const [matches, setMatches] = useState<MatchResult[]>([]);
   const [loadedClubId, setLoadedClubId] = useState<string | null>(null);
@@ -93,13 +102,44 @@ export const PickleballProvider: React.FC<{ user: UserAccount; children: React.R
   const [lang, setLang] = useState<'vi' | 'en'>('vi');
   const [viewMode, setViewMode] = useState<ViewMode>(() => (window.innerWidth < 768 ? 'mobile' : 'desktop'));
 
-  const selectedClub = clubs ? clubs.find((c) => c.id === selectedClubId) || clubs[0] : undefined;
+  // Sync defaultClubId from user profile if changed
+  useEffect(() => {
+    if (user?.defaultClubId && !localStorage.getItem('xgame_default_club_id')) {
+      setDefaultClubId(user.defaultClubId);
+      localStorage.setItem('xgame_default_club_id', user.defaultClubId);
+    }
+  }, [user?.defaultClubId]);
+
+  const selectedClub = useMemo(() => {
+    if (!clubs || clubs.length === 0) return undefined;
+    if (selectedClubId) {
+      const match = clubs.find((c) => c.id === selectedClubId);
+      if (match) return match;
+    }
+    if (defaultClubId) {
+      const defaultMatch = clubs.find((c) => c.id === defaultClubId);
+      if (defaultMatch) return defaultMatch;
+    }
+    return clubs[0];
+  }, [clubs, selectedClubId, defaultClubId]);
+
   const clubId = selectedClub?.id;
 
   const selectClub = useCallback((id: string) => {
     setSelectedClubId(id);
     setQueryParam(CLUB_QUERY_PARAM, id);
   }, []);
+
+  const handleSetDefaultClub = useCallback(async (id: string) => {
+    setDefaultClubId(id);
+    localStorage.setItem('xgame_default_club_id', id);
+    selectClub(id);
+    try {
+      await api.setDefaultClub(id);
+    } catch (err) {
+      console.warn('Failed to persist default club to server:', err);
+    }
+  }, [selectClub]);
 
   // Loads the account's clubs. An invite link (?join=CODE) is redeemed first.
   const loadClubs = useCallback(async () => {
@@ -271,6 +311,8 @@ export const PickleballProvider: React.FC<{ user: UserAccount; children: React.R
         clubs,
         selectedClub,
         setSelectedClub: (club) => selectClub(club.id),
+        defaultClubId,
+        setDefaultClub: handleSetDefaultClub,
         players,
         matches,
         myPlayer: players.find((p) => p.userId === user.id) || null,

@@ -137,6 +137,10 @@ class ApiService {
     return (await this.request('/auth/me', 'PATCH', profile)).user;
   }
 
+  async setDefaultClub(clubId: string | null): Promise<void> {
+    await this.request('/auth/default-club', 'POST', { clubId });
+  }
+
   async logout(): Promise<void> {
     await this.request('/auth/logout', 'POST');
   }
