@@ -1092,12 +1092,12 @@ export const CourtsideScoreboard: React.FC = () => {
 
                   {liveMatch ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {/* Warning badge if idle >= 20 minutes */}
+                      {/* Warning badge if idle >= 10 minutes */}
                       {(() => {
                         const idleMins = liveMatch.updatedAt 
                           ? Math.floor((Date.now() - new Date(liveMatch.updatedAt).getTime()) / 60000) 
                           : 0;
-                        if (idleMins >= 20) {
+                        if (idleMins >= 10) {
                           return (
                             <span style={{
                               background: '#fef3c7',
@@ -1107,7 +1107,7 @@ export const CourtsideScoreboard: React.FC = () => {
                               borderRadius: 999,
                               fontSize: '0.62rem',
                               fontWeight: 800,
-                            }} title={`Không có thao tác nào trong ${idleMins} phút qua. Sẽ tự động giải phóng khi quá hạn.`}>
+                            }} title={`Không có thao tác nào trong ${idleMins} phút qua. Sẽ tự động giải phóng khi quá hạn 30 phút.`}>
                               ⚠️ Treo {idleMins}p
                             </span>
                           );

@@ -21,8 +21,8 @@ setInterval(() => {
 }, 15000);
 
 // Auto-expire idle/abandoned matches to prevent courts from staying stuck
-// 1. Matches with 0-0 and no updates for > 30 minutes are considered abandoned drafts -> auto-cleared.
-// 2. Matches with active scores but no updates for > 2 hours (120 minutes) -> auto-cleared.
+// 1. Matches with 0-0 and no updates for > 10 minutes are considered abandoned drafts -> auto-cleared.
+// 2. Matches with active scores but no updates for > 30 minutes -> auto-cleared.
 setInterval(async () => {
   try {
     const now = Date.now();
@@ -34,7 +34,7 @@ setInterval(async () => {
       const idleMinutes = (now - updatedTime) / (1000 * 60);
 
       const isZeroZero = (court.score1 === 0 && court.score2 === 0);
-      const isExpired = isZeroZero ? (idleMinutes > 30) : (idleMinutes > 120);
+      const isExpired = isZeroZero ? (idleMinutes > 10) : (idleMinutes > 30);
 
       if (isExpired) {
         expiredCourtIds.push(courtId);
@@ -57,7 +57,7 @@ setInterval(async () => {
   } catch (err) {
     console.error('Error in auto-expire live courts cleaner:', err);
   }
-}, 60000);
+}, 30000);
 
 // Load persisted active courts from DB on startup
 async function initLiveCourts() {
@@ -65,7 +65,7 @@ async function initLiveCourts() {
     const result = await db.query(
       `SELECT id, club_id, court_name, data, is_active, updated_at 
        FROM live_courts 
-       WHERE is_active = TRUE AND updated_at > NOW() - INTERVAL '2 hours'`
+       WHERE is_active = TRUE AND updated_at > NOW() - INTERVAL '1 hour'`
     );
     for (const row of result.rows) {
       liveCourts.set(row.id, {
