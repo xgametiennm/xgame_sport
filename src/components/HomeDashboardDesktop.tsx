@@ -141,7 +141,7 @@ export const HomeDashboardDesktop: React.FC<HomeDashboardDesktopProps> = ({
           }}
         >
           <Plus size={18} strokeWidth={2.5} />
-          <span>+ Ghi Trận Đấu Mới</span>
+          <span>Ghi Trận Đấu Mới</span>
         </button>
       </div>
 

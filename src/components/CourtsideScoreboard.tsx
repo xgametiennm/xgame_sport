@@ -1275,7 +1275,7 @@ export const CourtsideScoreboard: React.FC = () => {
                 title="Bắt đầu trận đấu mới trên sân này (Reset điểm về 0-0)"
               >
                 <Plus size={15} strokeWidth={2.5} />
-                <span>+ Bắt đầu trận mới</span>
+                <span>Bắt đầu trận mới</span>
               </button>
             )}
 
