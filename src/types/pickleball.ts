@@ -162,6 +162,7 @@ export interface LiveCourtState {
   t2Left: LiveCourtPlayer;
   activeServerId: string;
   isGameOver: boolean;
+  isActive?: boolean;
   winnerTeam?: 1 | 2 | null;
   lastAction?: string;
   scorerName?: string;

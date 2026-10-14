@@ -60,13 +60,24 @@ function broadcastUpdate(courtId, payload) {
   }
 }
 
+function broadcastCourtsList(clubId) {
+  for (const client of sseSubscribers) {
+    if (!clubId || !client.clubId || client.clubId === clubId) {
+      try {
+        const courts = Array.from(liveCourts.values()).filter(c => !client.clubId || c.clubId === client.clubId);
+        client.res.write(`event: courts_list\ndata: ${JSON.stringify(courts)}\n\n`);
+      } catch {}
+    }
+  }
+}
+
 // GET /api/live/courts?clubId=...
 async function getLiveCourts(req, res) {
   try {
     const { clubId } = req.query;
     const courts = [];
     for (const court of liveCourts.values()) {
-      if (!clubId || court.clubId === clubId) {
+      if ((!clubId || court.clubId === clubId) && court.isActive !== false) {
         courts.push(court);
       }
     }
@@ -86,7 +97,7 @@ async function getCourt(req, res) {
     let court = liveCourts.get(courtId);
     if (!court) {
       // Try DB fallback
-      const result = await db.query('SELECT * FROM live_courts WHERE id = $1', [courtId]);
+      const result = await db.query('SELECT * FROM live_courts WHERE id = $1 AND is_active = TRUE', [courtId]);
       if (result.rows.length > 0) {
         const row = result.rows[0];
         court = {
@@ -99,7 +110,7 @@ async function getCourt(req, res) {
         liveCourts.set(courtId, court);
       }
     }
-    if (!court) {
+    if (!court || court.isActive === false) {
       return res.status(404).json({ success: false, error: 'Court not found or not currently active' });
     }
     res.json({ success: true, data: court });
@@ -139,6 +150,7 @@ async function updateCourt(req, res) {
       t2Left: body.t2Left || null,
       activeServerId: body.activeServerId || '',
       isGameOver: !!body.isGameOver,
+      isActive: true,
       winnerTeam: body.winnerTeam || null,
       lastAction: body.lastAction || 'update',
       scorerName: body.scorerName || (req.user ? req.user.name : 'Trọng tài'),
@@ -151,6 +163,7 @@ async function updateCourt(req, res) {
 
     // Broadcast immediately to all SSE clients (< 2ms)
     broadcastUpdate(courtId, courtData);
+    broadcastCourtsList(clubId);
 
     // Asynchronously upsert to DB
     if (clubId) {
@@ -178,16 +191,22 @@ async function finishCourt(req, res) {
   try {
     const { courtId } = req.params;
     const court = liveCourts.get(courtId);
+    let clubId = null;
     if (court) {
+      clubId = court.clubId;
       court.isGameOver = true;
+      court.isActive = false;
       court.updatedAt = new Date().toISOString();
-      broadcastUpdate(courtId, { ...court, lastAction: 'match_finished' });
+      broadcastUpdate(courtId, { ...court, isGameOver: true, isActive: false, lastAction: 'match_finished' });
+      liveCourts.delete(courtId);
     }
 
     await db.query(
       `UPDATE live_courts SET is_active = FALSE, updated_at = NOW() WHERE id = $1`,
       [courtId]
     ).catch(() => {});
+
+    broadcastCourtsList(clubId);
 
     res.json({ success: true });
   } catch (err) {

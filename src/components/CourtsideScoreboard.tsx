@@ -21,7 +21,11 @@ import {
   Minimize2,
   PlayCircle,
   Tv,
-  Edit3
+  Edit3,
+  Plus,
+  Flag,
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -260,10 +264,141 @@ export const CourtsideScoreboard: React.FC = () => {
     setScore2(data.score2);
   };
 
+  // State for court switching and match actions
+  const [isLoadingCourt, setIsLoadingCourt] = useState<boolean>(false);
+  const [showFinishModal, setShowFinishModal] = useState<boolean>(false);
+  const [courtToast, setCourtToast] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setCourtToast(msg);
+    setTimeout(() => setCourtToast(null), 3500);
+  };
+
+  // Switch court smoothly and fetch its active state or reset cleanly
+  const selectCourt = async (targetCourtId: string, targetCourtName?: string) => {
+    if (targetCourtId === courtId) return;
+    setIsLoadingCourt(true);
+
+    const preset = courtsPresets.find(p => `${selectedClub.id}-${p.idSuffix}` === targetCourtId);
+    const resolvedName = targetCourtName || preset?.name || targetCourtId;
+
+    setCourtId(targetCourtId);
+    setCourtName(resolvedName);
+    setHistory([]);
+
+    // Update URL query param cleanly without reload
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('court', targetCourtId);
+      window.history.replaceState({}, '', url.toString());
+    } catch {}
+
+    // Check if target court has active match on server
+    try {
+      const live = await api.getLiveCourt(targetCourtId);
+      if (live && !live.isGameOver && live.isActive !== false) {
+        applyRemoteState(live);
+        setIsLoadingCourt(false);
+        showToast(`Đã chuyển sang ${resolvedName} (Trận đấu đang diễn ra: ${live.score1} - ${live.score2})`);
+        return;
+      }
+    } catch {
+      // 404: No active match on this court
+    }
+
+    // Target court is empty -> Cleanly reset local state to 0 - 0 with default club players
+    setScore1(0);
+    setScore2(0);
+    setServingTeam(1);
+    setServerNumber(2);
+    setT1Right(defaultPlayers[0]);
+    setT1Left(defaultPlayers[1]);
+    setT2Right(defaultPlayers[2]);
+    setT2Left(defaultPlayers[3]);
+    setActiveServerId(defaultPlayers[0].id);
+    setIsLoadingCourt(false);
+    showToast(`Đã chuyển sang ${resolvedName} (Sân trống - Sẵn sàng tạo trận)`);
+  };
+
+  // Start a fresh new match on current court
+  const startNewMatchOnCourt = (customPlayers?: LiveCourtPlayer[]) => {
+    if (isSpectator) return;
+    const p1 = customPlayers?.[0] || t1Right || defaultPlayers[0];
+    const p2 = customPlayers?.[1] || t1Left || defaultPlayers[1];
+    const p3 = customPlayers?.[2] || t2Right || defaultPlayers[2];
+    const p4 = customPlayers?.[3] || t2Left || defaultPlayers[3];
+
+    setScore1(0);
+    setScore2(0);
+    setServingTeam(1);
+    setServerNumber(2);
+    setT1Right(p1);
+    setT1Left(p2);
+    setT2Right(p3);
+    setT2Left(p4);
+    setActiveServerId(p1.id);
+    setHistory([]);
+
+    broadcastState.current({
+      score1: 0,
+      score2: 0,
+      servingTeam: 1,
+      serverNumber: 2,
+      t1Right: p1,
+      t1Left: p2,
+      t2Right: p3,
+      t2Left: p4,
+      activeServerId: p1.id,
+      isGameOver: false,
+      winnerTeam: null,
+      lastAction: 'start_new_match',
+    });
+
+    showToast(`Đã tạo và bắt đầu trận đấu mới trên ${courtName}!`);
+
+    // Refetch active courts list immediately
+    setTimeout(() => {
+      api.getLiveCourts(selectedClub.id).then((list) => {
+        if (Array.isArray(list)) setActiveCourtsList(list);
+      }).catch(() => {});
+    }, 300);
+  };
+
+  // Finish current match and release the court
+  const finishCurrentMatch = async () => {
+    try {
+      await api.finishLiveCourt(courtId);
+      setShowFinishModal(false);
+      setScore1(0);
+      setScore2(0);
+      setServingTeam(1);
+      setServerNumber(2);
+      setHistory([]);
+
+      const updatedCourts = await api.getLiveCourts(selectedClub.id);
+      if (Array.isArray(updatedCourts)) setActiveCourtsList(updatedCourts);
+
+      showToast(`Đã kết thúc trận đấu trên ${courtName}. Sân đã được giải phóng!`);
+    } catch (err) {
+      console.error('Error finishing court:', err);
+    }
+  };
+
   // REAL-TIME SSE & POLLING SYNCHRONIZATION
   useEffect(() => {
     let eventSource: EventSource | null = null;
     let pollInterval: any = null;
+
+    // Load initial court state for both referee and spectator
+    const loadCourtInitial = async () => {
+      try {
+        const live = await api.getLiveCourt(courtId);
+        if (live && !live.isGameOver && live.isActive !== false) {
+          applyRemoteState(live);
+        }
+      } catch {}
+    };
+    loadCourtInitial();
 
     // Connect Server-Sent Events (SSE) for instant pushes (< 50ms)
     try {
@@ -293,7 +428,7 @@ export const CourtsideScoreboard: React.FC = () => {
       });
 
       eventSource.onerror = () => {
-        // SSE will attempt auto-reconnect; fast polling acts as bulletproof fallback
+        // SSE auto-reconnect fallback
       };
     } catch {}
 
@@ -683,10 +818,7 @@ export const CourtsideScoreboard: React.FC = () => {
             <select
               value={courtId}
               onChange={(e) => {
-                const newId = e.target.value;
-                setCourtId(newId);
-                const preset = courtsPresets.find(p => `${selectedClub.id}-${p.idSuffix}` === newId);
-                if (preset) setCourtName(preset.name);
+                selectCourt(e.target.value);
               }}
               style={{
                 background: isSpectator ? '#1e293b' : '#f8fafc',
@@ -853,15 +985,237 @@ export const CourtsideScoreboard: React.FC = () => {
         </div>
       )}
 
+      {/* TOAST NOTIFICATION */}
+      {courtToast && (
+        <div style={{
+          marginBottom: 12,
+          padding: '10px 16px',
+          borderRadius: 12,
+          background: '#064030',
+          color: '#bef264',
+          border: '1.5px solid #059669',
+          fontSize: '0.85rem',
+          fontWeight: 800,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          boxShadow: '0 4px 16px rgba(6, 64, 48, 0.3)',
+          animation: 'fadeIn 0.2s ease-out',
+        }}>
+          <Check size={18} color="#bef264" />
+          <span>{courtToast}</span>
+        </div>
+      )}
+
+      {/* 0.5. MULTI-COURT COMMAND BAR & GRID SELECTOR */}
+      <div className="card" style={{
+        marginBottom: 16,
+        padding: '14px 18px',
+        borderRadius: 18,
+        background: isSpectator ? '#0f172a' : '#ffffff',
+        border: isSpectator ? '1.5px solid #334155' : '1px solid #e2e8f0',
+        boxShadow: 'var(--shadow-sm)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: '1.2rem' }}>🏟️</span>
+            <div>
+              <div style={{ fontSize: '0.92rem', fontWeight: 900, color: isSpectator ? '#ffffff' : '#0f172a' }}>
+                Hệ Thống Sân Đấu · Quản Lý & Chuyển Sân Tức Thì ({selectedClub.name})
+              </div>
+              <div style={{ fontSize: '0.74rem', color: isSpectator ? '#94a3b8' : '#64748b' }}>
+                {isSpectator 
+                  ? 'Bấm vào bất kỳ sân nào để theo dõi tỷ số trực tiếp thời gian thực' 
+                  : 'Bấm vào bất kỳ sân nào để tạo trận hoặc tiếp tục chấm điểm. Mỗi sân hoạt động hoàn toàn độc lập.'}
+              </div>
+            </div>
+          </div>
+
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            background: isSpectator ? '#1e293b' : '#ecfdf5',
+            color: isSpectator ? '#38bdf8' : '#059669',
+            padding: '4px 12px',
+            borderRadius: 999,
+            fontSize: '0.75rem',
+            fontWeight: 800,
+            border: isSpectator ? '1px solid #334155' : '1px solid #a7f3d0',
+          }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#059669' }} />
+            <span>{activeCourtsList.filter(c => !c.isGameOver && c.isActive !== false).length} / {courtsPresets.length} Sân Đang Hoạt Động</span>
+          </div>
+        </div>
+
+        {/* Responsive Court Cards */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: 10,
+        }}>
+          {courtsPresets.map((c) => {
+            const fullId = `${selectedClub.id}-${c.idSuffix}`;
+            const isSelected = courtId === fullId;
+            const liveMatch = activeCourtsList.find(a => a.id === fullId && !a.isGameOver && a.isActive !== false);
+
+            return (
+              <div
+                key={fullId}
+                onClick={() => selectCourt(fullId, c.name)}
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: 14,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  border: isSelected 
+                    ? (isSpectator ? '2.5px solid #38bdf8' : '2.5px solid #059669') 
+                    : (isSpectator ? '1px solid #334155' : '1px solid #e2e8f0'),
+                  background: isSelected 
+                    ? (isSpectator ? 'rgba(56, 189, 248, 0.12)' : '#ecfdf5') 
+                    : (isSpectator ? '#1e293b' : '#f8fafc'),
+                  boxShadow: isSelected 
+                    ? (isSpectator ? '0 0 16px rgba(56, 189, 248, 0.25)' : '0 4px 14px rgba(5, 150, 105, 0.15)') 
+                    : 'none',
+                  position: 'relative',
+                }}
+              >
+                {/* Top Row: Name and Live Status */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ 
+                    fontSize: '0.86rem', 
+                    fontWeight: 900, 
+                    color: isSelected ? (isSpectator ? '#38bdf8' : '#064e3b') : (isSpectator ? '#ffffff' : '#0f172a') 
+                  }}>
+                    {c.name}
+                  </span>
+
+                  {liveMatch ? (
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      background: '#e11d48',
+                      color: '#ffffff',
+                      padding: '2px 7px',
+                      borderRadius: 999,
+                      fontSize: '0.66rem',
+                      fontWeight: 900,
+                    }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ffffff', animation: 'liveBlink 1.2s infinite ease-in-out' }} />
+                      LIVE
+                    </span>
+                  ) : (
+                    <span style={{
+                      background: isSpectator ? '#334155' : '#e2e8f0',
+                      color: isSpectator ? '#94a3b8' : '#64748b',
+                      padding: '2px 7px',
+                      borderRadius: 999,
+                      fontSize: '0.66rem',
+                      fontWeight: 800,
+                    }}>
+                      Sân trống
+                    </span>
+                  )}
+                </div>
+
+                {/* Middle: Live score or Empty text */}
+                {liveMatch ? (
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                      <span style={{ 
+                        fontFamily: 'var(--font-mono)', 
+                        fontSize: '1.35rem', 
+                        fontWeight: 900, 
+                        color: isSpectator ? '#38bdf8' : '#059669',
+                        lineHeight: 1.1 
+                      }}>
+                        {liveMatch.score1} — {liveMatch.score2}
+                      </span>
+                      <span style={{ fontSize: '0.72rem', color: isSpectator ? '#94a3b8' : '#64748b', fontWeight: 600 }}>
+                        (Chạm {liveMatch.targetScore || 11})
+                      </span>
+                    </div>
+                    <div style={{ 
+                      fontSize: '0.75rem', 
+                      color: isSpectator ? '#cbd5e1' : '#334155', 
+                      fontWeight: 700, 
+                      marginTop: 2,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}>
+                      {liveMatch.t1Right?.name?.split(' ').slice(-1) || 'Đ1'}/{liveMatch.t1Left?.name?.split(' ').slice(-1) || 'Đ1'} vs {liveMatch.t2Right?.name?.split(' ').slice(-1) || 'Đ2'}/{liveMatch.t2Left?.name?.split(' ').slice(-1) || 'Đ2'}
+                    </div>
+                    {liveMatch.scorerName && (
+                      <div style={{ fontSize: '0.68rem', color: isSpectator ? '#64748b' : '#94a3b8', marginTop: 1 }}>
+                        Trọng tài: {liveMatch.scorerName}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ fontSize: '0.76rem', color: isSpectator ? '#64748b' : '#94a3b8', fontStyle: 'italic', margin: '4px 0' }}>
+                      Chưa có trận đấu nào
+                    </div>
+                    {!isSpectator && (
+                      <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 800 }}>
+                        + Bấm để vào tạo trận & chấm điểm
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Bottom: Selection Status */}
+                <div style={{ marginTop: 8, paddingTop: 6, borderTop: isSpectator ? '1px solid #334155' : '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ 
+                    fontSize: '0.7rem', 
+                    fontWeight: 800, 
+                    color: isSelected ? (isSpectator ? '#38bdf8' : '#059669') : (isSpectator ? '#64748b' : '#94a3b8') 
+                  }}>
+                    {isSelected ? '✓ ĐANG CHỌN SÂN NÀY' : 'Chuyển sang sân này ➔'}
+                  </span>
+                  {isSelected && (
+                    <span style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      background: isSpectator ? '#38bdf8' : '#059669',
+                    }} />
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* 1. TOP HEADER & CONTROLS */}
       <div className="card" style={{ marginBottom: 16, padding: '14px 20px', borderRadius: 18 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span className="badge badge-court" style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0' }}>
                 {courtName}
               </span>
               <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 600 }}>{selectedClub.name}</span>
+              
+              {/* Active match status badge on current court */}
+              {activeCourtsList.some(a => a.id === courtId && !a.isGameOver && a.isActive !== false) ? (
+                <span className="badge" style={{ background: '#fee2e2', color: '#e11d48', border: '1px solid #fecdd3', fontWeight: 800, fontSize: '0.72rem' }}>
+                  🔴 ĐANG CÓ TRẬN ({score1} - {score2})
+                </span>
+              ) : (
+                <span className="badge" style={{ background: '#f8fafc', color: '#64748b', border: '1px solid #e2e8f0', fontWeight: 700, fontSize: '0.72rem' }}>
+                  ⚪ SÂN TRỐNG
+                </span>
+              )}
+
+              {isLoadingCourt && (
+                <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 700 }}>
+                  Đang tải sân...
+                </span>
+              )}
             </div>
             <h2 style={{ fontSize: '1.35rem', fontWeight: 900, marginTop: 4, color: '#0f172a' }}>
               {isSpectator 
@@ -871,6 +1225,51 @@ export const CourtsideScoreboard: React.FC = () => {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {/* Start New Match Button (Referee Mode Only) */}
+            {!isSpectator && (
+              <button
+                onClick={() => startNewMatchOnCourt()}
+                className="btn-court"
+                style={{
+                  padding: '6px 14px',
+                  fontSize: '0.82rem',
+                  fontWeight: 800,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  borderRadius: 999,
+                }}
+                title="Bắt đầu trận đấu mới trên sân này (Reset điểm về 0-0)"
+              >
+                <Plus size={15} strokeWidth={2.5} />
+                <span>+ Bắt đầu trận mới</span>
+              </button>
+            )}
+
+            {/* Finish Match Button (Referee Mode Only) */}
+            {!isSpectator && (activeCourtsList.some(a => a.id === courtId && !a.isGameOver && a.isActive !== false) || score1 > 0 || score2 > 0) && (
+              <button
+                onClick={() => setShowFinishModal(true)}
+                className="btn-secondary"
+                style={{
+                  padding: '6px 14px',
+                  fontSize: '0.82rem',
+                  fontWeight: 800,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  borderRadius: 999,
+                  color: '#e11d48',
+                  borderColor: '#fca5a5',
+                  background: '#fff1f2',
+                }}
+                title="Kết thúc trận đấu và giải phóng sân này"
+              >
+                <Flag size={14} />
+                <span>🏁 Kết thúc trận</span>
+              </button>
+            )}
+
             {/* Configure Roster Button (Only in Referee Mode) */}
             {!isSpectator && (
               <button
@@ -1729,9 +2128,26 @@ export const CourtsideScoreboard: React.FC = () => {
           <button
             onClick={resetGame}
             className="btn-secondary"
-            style={{ padding: '12px 20px', fontSize: '0.92rem', borderRadius: 14, color: '#e11d48' }}
+            style={{ padding: '12px 20px', fontSize: '0.92rem', borderRadius: 14 }}
           >
-            <span>Làm Mới (Reset Sân)</span>
+            <RotateCcw size={17} />
+            <span>Đặt Lại (0 - 0)</span>
+          </button>
+
+          <button
+            onClick={() => setShowFinishModal(true)}
+            className="btn-secondary"
+            style={{ 
+              padding: '12px 20px', 
+              fontSize: '0.92rem', 
+              borderRadius: 14, 
+              color: '#e11d48', 
+              borderColor: '#fca5a5',
+              background: '#fff1f2'
+            }}
+          >
+            <Flag size={17} />
+            <span>Kết Thúc Trận (Giải Phóng Sân)</span>
           </button>
 
           {isGameOver && (
@@ -1745,6 +2161,89 @@ export const CourtsideScoreboard: React.FC = () => {
               <ArrowRight size={18} />
             </button>
           )}
+        </div>
+      )}
+
+      {/* FINISH MATCH CONFIRMATION MODAL */}
+      {showFinishModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: 16,
+        }}>
+          <div className="card" style={{
+            maxWidth: 460,
+            width: '100%',
+            padding: '24px 22px',
+            borderRadius: 22,
+            background: '#ffffff',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
+            animation: 'fadeIn 0.2s ease-out',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+              <div style={{
+                width: 44,
+                height: 44,
+                borderRadius: '50%',
+                background: '#fee2e2',
+                color: '#e11d48',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '1.3rem',
+              }}>
+                🏁
+              </div>
+              <div>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0f172a', margin: 0 }}>
+                  Kết Thúc Trận Đấu Trên {courtName}?
+                </h3>
+                <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                  Tỷ số hiện tại: <strong style={{ color: '#059669' }}>{score1} — {score2}</strong>
+                </div>
+              </div>
+            </div>
+
+            <p style={{ fontSize: '0.86rem', color: '#475569', lineHeight: 1.5, margin: '12px 0 20px' }}>
+              Khi xác nhận kết thúc, trận đấu trên <strong>{courtName}</strong> sẽ được đánh dấu hoàn thành và giải phóng khỏi danh sách trực tiếp. Sân sẽ trở về trạng thái trống (0 — 0) để sẵn sàng cho các trận tiếp theo.
+            </p>
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowFinishModal(false)}
+                className="btn-secondary"
+                style={{ padding: '9px 18px', fontSize: '0.86rem', borderRadius: 12 }}
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                onClick={finishCurrentMatch}
+                style={{
+                  padding: '9px 20px',
+                  fontSize: '0.86rem',
+                  fontWeight: 900,
+                  borderRadius: 12,
+                  border: 'none',
+                  background: '#e11d48',
+                  color: '#ffffff',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  boxShadow: '0 4px 12px rgba(225, 29, 72, 0.3)',
+                }}
+              >
+                <Flag size={15} />
+                <span>Xác Nhận Kết Thúc</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
