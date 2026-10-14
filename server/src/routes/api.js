@@ -5,6 +5,7 @@ const clubController = require('../controllers/clubController');
 const playerController = require('../controllers/playerController');
 const matchController = require('../controllers/matchController');
 const authController = require('../controllers/authController');
+const liveController = require('../controllers/liveController');
 const { requireAuth, requireClubRole } = require('../middleware/auth');
 
 // Every club route needs a signed-in user who belongs to that club;
@@ -52,5 +53,14 @@ router.delete('/players/:id', requireAuth, playerController.removePlayer);
 // Matches & DUPR calculation
 router.get('/matches', memberOf((req) => req.query.clubId), matchController.getMatches);
 router.post('/matches', memberOf((req) => req.body.clubId), matchController.createMatch);
+router.patch('/matches/:id', requireAuth, matchController.updateMatch);
+router.delete('/matches/:id', requireAuth, matchController.deleteMatch);
+
+// Real-time Live Matches & Courtside Broadcast
+router.get('/live/courts', liveController.getLiveCourts);
+router.get('/live/court/:courtId', liveController.getCourt);
+router.post('/live/court/:courtId', liveController.updateCourt);
+router.post('/live/court/:courtId/finish', liveController.finishCourt);
+router.get('/live/stream', liveController.streamCourt);
 
 module.exports = router;

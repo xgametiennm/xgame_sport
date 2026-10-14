@@ -197,10 +197,10 @@ export const LeaderboardTable: React.FC<{
     }}>
       <span style={HEADER_CELL}>#</span>
       <span style={{ ...HEADER_CELL, textAlign: 'left' }}>Thành viên</span>
-      <span style={HEADER_CELL}>Tổng thắng</span>
+      <span style={HEADER_CELL}>Thắng đôi</span>
       <span style={HEADER_CELL}>Chuỗi</span>
       <span style={HEADER_CELL}>% Thắng</span>
-      <span style={HEADER_CELL}>DUPR</span>
+      <span style={HEADER_CELL}>DUPR đôi</span>
       <span />
     </div>
 

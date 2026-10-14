@@ -119,6 +119,7 @@ export const ClubSettingsMobile: React.FC = () => {
   // Opening this link signs the person in and redeems the code
   const inviteLink = `${window.location.origin}${window.location.pathname}?join=${joinCode}`;
   const roleOf = (p: Player): ClubRole => p.role || 'member';
+  const ownerCount = players.filter((p) => roleOf(p) === 'owner').length;
 
   const rankedPlayers = useMemo(
     () => [...players].sort((a, b) => b.winsDoubles - a.winsDoubles),
@@ -164,8 +165,12 @@ export const ClubSettingsMobile: React.FC = () => {
     }
   };
 
-  // Making someone owner also steps the previous owner down to admin (done by the server)
-  const changeRole = (player: Player, role: ClubRole) => run(() => updatePlayerRole(player.id, role));
+  // A club can have several owners; giving up your own ownership is confirmed first
+  const changeRole = (player: Player, role: ClubRole) => {
+    const steppingDown = player.id === myPlayer?.id && roleOf(player) === 'owner' && role !== 'owner';
+    if (steppingDown && !window.confirm('Bạn sẽ không còn là chủ CLB này nữa. Tiếp tục?')) return;
+    run(() => updatePlayerRole(player.id, role));
+  };
 
   const handleRemove = (player: Player) => {
     setMenuPlayerId(null);
@@ -415,6 +420,8 @@ export const ClubSettingsMobile: React.FC = () => {
         {visiblePlayers.map((p) => {
           const role = roleOf(p);
           const rank = rankedPlayers.indexOf(p) + 1;
+          // Managers change roles; only owners touch other owners, and the last owner stays
+          const canManage = isManager && (role !== 'owner' || (isOwner && ownerCount > 1));
           return (
             <div
               key={p.id}
@@ -443,8 +450,7 @@ export const ClubSettingsMobile: React.FC = () => {
                 </div>
               </div>
 
-              {/* Managers change roles; the owner role only moves by handing ownership over */}
-              {isManager && role !== 'owner' ? (
+              {canManage ? (
                 <select
                   value={role}
                   onChange={(e) => changeRole(p, e.target.value as ClubRole)}
@@ -483,7 +489,7 @@ export const ClubSettingsMobile: React.FC = () => {
                 </span>
               )}
 
-              <div style={{ position: 'relative', visibility: isManager && role !== 'owner' ? 'visible' : 'hidden' }}>
+              <div style={{ position: 'relative', visibility: canManage ? 'visible' : 'hidden' }}>
                 <button
                   onClick={() => setMenuPlayerId(menuPlayerId === p.id ? null : p.id)}
                   aria-label={`Tùy chọn cho ${p.name}`}
@@ -506,6 +512,18 @@ export const ClubSettingsMobile: React.FC = () => {
                       boxShadow: '0 10px 28px rgba(15, 23, 42, 0.16)',
                       padding: 4,
                     }}>
+                      {isOwner && p.userId && role !== 'owner' && (
+                        <button
+                          style={menuItemStyle}
+                          onClick={() => {
+                            changeRole(p, 'owner');
+                            setMenuPlayerId(null);
+                          }}
+                        >
+                          <Crown size={15} color="#f59e0b" />
+                          <span>Đặt làm chủ CLB</span>
+                        </button>
+                      )}
                       {role !== 'admin' && (
                         <button
                           style={menuItemStyle}

@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const { toPlayer } = require('./playerController');
-const { newId } = require('../middleware/auth');
+const { newId, getMembership, isManager } = require('../middleware/auth');
+const { calculateDuprMatchDelta } = require('../services/duprEngine');
 
 const MIN_RATING = 2.0;
 const MAX_RATING = 8.0;
@@ -40,6 +41,9 @@ function toMatch(row, playersById) {
     expectedPointsShareTeam1: num(details.expectedPointsShareTeam1, 0.5),
     marginOfVictoryFactor: num(details.marginOfVictoryFactor, 1),
     notes: row.notes || '',
+    updatedByName: row.updated_by_name || (details.lastUpdatedBy && details.lastUpdatedBy.name) || null,
+    updatedAt: row.updated_at || (details.lastUpdatedBy && details.lastUpdatedBy.at) || null,
+    updatedByRole: (details.lastUpdatedBy && details.lastUpdatedBy.role) || null,
   };
 }
 
@@ -199,8 +203,341 @@ async function recordMatch(req, res) {
   }
 }
 
+async function recalculatePlayerStreakAndForm(client, clubId, playerId, excludeMatchId = null) {
+  let query = `
+    SELECT id, winner, team1_player1_id, team1_player2_id, team2_player1_id, team2_player2_id
+    FROM matches
+    WHERE club_id = $1 AND ($2 IN (team1_player1_id, team1_player2_id, team2_player1_id, team2_player2_id))
+  `;
+  const params = [clubId, playerId];
+  if (excludeMatchId) {
+    params.push(excludeMatchId);
+    query += ` AND id <> $${params.length}`;
+  }
+  query += ` ORDER BY match_date DESC, created_at DESC LIMIT 20`;
+
+  const res = await client.query(query, params);
+  let streak = 0;
+  const form = [];
+
+  for (let i = 0; i < res.rows.length; i++) {
+    const row = res.rows[i];
+    const isTeam1 = (row.team1_player1_id === playerId || row.team1_player2_id === playerId);
+    const won = (isTeam1 && row.winner === 1) || (!isTeam1 && row.winner === 2);
+    if (i < 5) form.push(won ? 'W' : 'L');
+
+    if (i === 0) {
+      streak = won ? 1 : -1;
+    } else {
+      if (won && streak > 0) streak++;
+      else if (!won && streak < 0) streak--;
+    }
+  }
+
+  await client.query(
+    'UPDATE players SET streak = $1, form = $2, updated_at = NOW() WHERE id = $3',
+    [streak, form, playerId]
+  );
+}
+
+async function rollbackMatchStats(client, match) {
+  const format = match.format || 'doubles';
+  const prefix = format === 'singles' ? 'singles' : 'doubles';
+  const winner = Number(match.winner);
+  const score1 = Number(match.total_score_team1);
+  const score2 = Number(match.total_score_team2);
+
+  let deltaTeam1 = 0;
+  let deltaTeam2 = 0;
+  const details = typeof match.details === 'string' ? JSON.parse(match.details || '{}') : (match.details || {});
+  if (details.team1 && typeof details.team1.deltaRating === 'number') {
+    deltaTeam1 = details.team1.deltaRating;
+    deltaTeam2 = details.team2 ? details.team2.deltaRating : -deltaTeam1;
+  } else {
+    const absDelta = parseFloat(match.delta_rating) || 0;
+    deltaTeam1 = winner === 1 ? absDelta : -absDelta;
+    deltaTeam2 = winner === 2 ? absDelta : -absDelta;
+  }
+
+  const team1Ids = [match.team1_player1_id, match.team1_player2_id].filter(Boolean);
+  const team2Ids = [match.team2_player1_id, match.team2_player2_id].filter(Boolean);
+  const allIds = [...team1Ids, ...team2Ids];
+
+  const playersRes = await client.query(
+    'SELECT * FROM players WHERE id = ANY($1) FOR UPDATE',
+    [allIds]
+  );
+  const rowsById = new Map(playersRes.rows.map((r) => [r.id, r]));
+
+  const revertPlayer = async (playerId, deltaAdded, won, pointDiff) => {
+    const p = rowsById.get(playerId);
+    if (!p) return;
+    const played = Math.max(0, (p[`matches_played_${prefix}`] || 1) - 1);
+    const currentRating = parseFloat(p[`${prefix}_rating`]) || 3.5;
+    const newRating = Math.max(MIN_RATING, Math.min(MAX_RATING, currentRating - deltaAdded));
+    const winDec = won ? 1 : 0;
+    const lossDec = won ? 0 : 1;
+
+    await client.query(`
+      UPDATE players
+      SET ${prefix}_rating = $1,
+          matches_played_${prefix} = $2,
+          wins_${prefix} = GREATEST(0, wins_${prefix} - $3),
+          losses_${prefix} = GREATEST(0, losses_${prefix} - $4),
+          provisional_${prefix} = $5,
+          point_differential = point_differential - $6,
+          updated_at = NOW()
+      WHERE id = $7
+    `, [newRating.toFixed(3), played, winDec, lossDec, played < PROVISIONAL_MATCHES, pointDiff, playerId]);
+  };
+
+  for (const id of team1Ids) await revertPlayer(id, deltaTeam1, winner === 1, score1 - score2);
+  for (const id of team2Ids) await revertPlayer(id, deltaTeam2, winner === 2, score2 - score1);
+
+  await client.query('UPDATE clubs SET match_count = GREATEST(0, match_count - 1) WHERE id = $1', [match.club_id]);
+}
+
+async function checkMatchManager(req, res, matchId) {
+  const matchRes = await db.query('SELECT * FROM matches WHERE id = $1', [matchId]);
+  if (matchRes.rows.length === 0) {
+    res.status(404).json({ success: false, error: 'Không tìm thấy trận đấu' });
+    return null;
+  }
+  const match = matchRes.rows[0];
+  const membership = await getMembership(req.user.id, match.club_id);
+  if (!membership || !isManager(membership)) {
+    res.status(403).json({
+      success: false,
+      error: 'Chỉ chủ CLB hoặc quản trị viên mới có quyền chỉnh sửa hoặc xóa kết quả trận đấu'
+    });
+    return null;
+  }
+  return { match, membership };
+}
+
+async function deleteMatch(req, res) {
+  try {
+    const check = await checkMatchManager(req, res, req.params.id);
+    if (!check) return;
+    const { match } = check;
+
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await rollbackMatchStats(client, match);
+      await client.query('DELETE FROM matches WHERE id = $1', [match.id]);
+
+      const allIds = [match.team1_player1_id, match.team1_player2_id, match.team2_player1_id, match.team2_player2_id].filter(Boolean);
+      for (const id of allIds) {
+        await recalculatePlayerStreakAndForm(client, match.club_id, id);
+      }
+
+      await client.query('COMMIT');
+      res.json({ success: true, message: 'Đã xóa kết quả trận đấu thành công' });
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      console.error('deleteMatch error:', err);
+      res.status(500).json({ success: false, error: 'Lỗi khi xóa trận đấu' });
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error('deleteMatch outer error:', err);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function updateMatch(req, res) {
+  try {
+    const check = await checkMatchManager(req, res, req.params.id);
+    if (!check) return;
+    const { match: oldMatch } = check;
+    const body = req.body || {};
+
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Rollback old match's player statistics
+      await rollbackMatchStats(client, oldMatch);
+
+      // 2. Prepare new match data
+      const clubId = oldMatch.club_id;
+      const format = body.format || oldMatch.format || 'doubles';
+      const importance = body.importance || oldMatch.importance || 'league';
+      const courtName = body.courtName || oldMatch.court_name || 'Sân CLB';
+      const winner = Number(body.winner !== undefined ? body.winner : oldMatch.winner);
+      const score1 = Number(body.totalScoreTeam1 !== undefined ? body.totalScoreTeam1 : oldMatch.total_score_team1);
+      const score2 = Number(body.totalScoreTeam2 !== undefined ? body.totalScoreTeam2 : oldMatch.total_score_team2);
+      const sets = body.sets || oldMatch.sets || [{ team1: score1, team2: score2 }];
+      const notes = body.notes !== undefined ? body.notes : oldMatch.notes;
+      const matchDate = body.date && !Number.isNaN(Date.parse(body.date)) ? new Date(body.date) : oldMatch.match_date;
+
+      const team1 = body.team1 || {};
+      const team2 = body.team2 || {};
+      const idOf = (p) => (p && (typeof p === 'object' ? p.id : p)) || null;
+
+      const lineup = {
+        team1: [
+          idOf(team1.player1) || oldMatch.team1_player1_id,
+          idOf(team1.player2) || (format === 'doubles' ? oldMatch.team1_player2_id : null),
+        ].filter(Boolean),
+        team2: [
+          idOf(team2.player1) || oldMatch.team2_player1_id,
+          idOf(team2.player2) || (format === 'doubles' ? oldMatch.team2_player2_id : null),
+        ].filter(Boolean),
+      };
+
+      const perTeam = format === 'singles' ? 1 : 2;
+      const allIds = [...lineup.team1, ...lineup.team2];
+
+      if (
+        ![1, 2].includes(winner) || !Number.isFinite(score1) || !Number.isFinite(score2) ||
+        lineup.team1.length !== perTeam || lineup.team2.length !== perTeam ||
+        new Set(allIds).size !== allIds.length
+      ) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ success: false, error: 'Thông tin trận đấu không hợp lệ' });
+      }
+
+      // Check all players exist and belong to club
+      const playersRes = await client.query(
+        'SELECT * FROM players WHERE id = ANY($1) AND club_id = $2 FOR UPDATE',
+        [allIds, clubId]
+      );
+      if (playersRes.rows.length !== allIds.length) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ success: false, error: 'Có người chơi không thuộc CLB này' });
+      }
+      const rowsById = new Map(playersRes.rows.map((row) => [row.id, row]));
+
+      // 3. Compute new rating delta if not passed
+      let deltaTeam1 = num(team1.deltaRating);
+      let deltaTeam2 = num(team2.deltaRating);
+      if (!deltaTeam1 && !deltaTeam2) {
+        const prefix = format === 'singles' ? 'singles' : 'doubles';
+        const avg1 = lineup.team1.reduce((sum, id) => sum + parseFloat(rowsById.get(id)[`${prefix}_rating`]), 0) / lineup.team1.length;
+        const avg2 = lineup.team2.reduce((sum, id) => sum + parseFloat(rowsById.get(id)[`${prefix}_rating`]), 0) / lineup.team2.length;
+        const duprRes = calculateDuprMatchDelta({
+          ratingTeam1: avg1,
+          ratingTeam2: avg2,
+          actualScoreTeam1: score1,
+          actualScoreTeam2: score2,
+          importanceFactor: importance === 'league' ? 1.0 : 0.8,
+        });
+        deltaTeam1 = duprRes.deltaTeam1;
+        deltaTeam2 = duprRes.deltaTeam2;
+      }
+
+      const teamInfo = (t, defaultDelta) => ({
+        startRatingAvg: num(t.startRatingAvg),
+        deltaRating: Math.max(-1, Math.min(1, num(t.deltaRating, defaultDelta))),
+        newRatingAvg: num(t.newRatingAvg),
+      });
+
+      const updaterName = (membership && membership.name) || (req.user && req.user.name) || 'Quản trị viên';
+      const updaterRole = membership && membership.role === 'owner' ? 'Chủ CLB' : 'Quản trị viên';
+      const updatedAt = new Date();
+
+      const details = {
+        team1: teamInfo(team1, deltaTeam1),
+        team2: teamInfo(team2, deltaTeam2),
+        expectedWinProbTeam1: num(body.expectedWinProbTeam1, 0.5),
+        expectedWinProbTeam2: num(body.expectedWinProbTeam2, 0.5),
+        actualPointsShareTeam1: num(body.actualPointsShareTeam1, (score1 + score2 > 0 ? score1 / (score1 + score2) : 0.5)),
+        expectedPointsShareTeam1: num(body.expectedPointsShareTeam1, 0.5),
+        marginOfVictoryFactor: num(body.marginOfVictoryFactor, 1),
+        lastUpdatedBy: {
+          name: updaterName,
+          role: updaterRole,
+          at: updatedAt.toISOString(),
+        },
+      };
+
+      // 4. Update match row
+      const updateRes = await client.query(`
+        UPDATE matches
+        SET match_date = $1,
+            format = $2,
+            importance = $3,
+            court_name = $4,
+            winner = $5,
+            sets = $6,
+            total_score_team1 = $7,
+            total_score_team2 = $8,
+            team1_player1_id = $9,
+            team1_player2_id = $10,
+            team2_player1_id = $11,
+            team2_player2_id = $12,
+            delta_rating = $13,
+            notes = $14,
+            details = $15,
+            updated_by_name = $16,
+            updated_at = $17
+        WHERE id = $18
+        RETURNING *
+      `, [
+        matchDate, format, importance, courtName, winner, JSON.stringify(sets),
+        score1, score2,
+        lineup.team1[0], lineup.team1[1] || null, lineup.team2[0], lineup.team2[1] || null,
+        Math.abs(details.team1.deltaRating), notes || '', JSON.stringify(details),
+        `${updaterName} (${updaterRole})`, updatedAt,
+        oldMatch.id
+      ]);
+
+      // 5. Apply new results to players
+      const prefix = format === 'singles' ? 'singles' : 'doubles';
+      const applyResult = async (playerId, delta, won, pointDiff) => {
+        const p = rowsById.get(playerId);
+        const played = p[`matches_played_${prefix}`] + 1;
+        const rating = Math.max(MIN_RATING, Math.min(MAX_RATING, parseFloat(p[`${prefix}_rating`]) + delta));
+
+        await client.query(`
+          UPDATE players
+          SET ${prefix}_rating = $1,
+              matches_played_${prefix} = $2,
+              wins_${prefix} = wins_${prefix} + $3,
+              losses_${prefix} = losses_${prefix} + $4,
+              provisional_${prefix} = $5,
+              point_differential = point_differential + $6,
+              updated_at = NOW()
+          WHERE id = $7
+        `, [rating.toFixed(3), played, won ? 1 : 0, won ? 0 : 1, played < PROVISIONAL_MATCHES, pointDiff, playerId]);
+      };
+
+      for (const id of lineup.team1) await applyResult(id, details.team1.deltaRating, winner === 1, score1 - score2);
+      for (const id of lineup.team2) await applyResult(id, details.team2.deltaRating, winner === 2, score2 - score1);
+
+      // Re-increment match_count because rollback decremented it
+      await client.query('UPDATE clubs SET match_count = match_count + 1 WHERE id = $1', [clubId]);
+
+      // Recalculate streak & form for all affected players (both old lineup and new lineup)
+      const allAffectedIds = new Set([...allIds, oldMatch.team1_player1_id, oldMatch.team1_player2_id, oldMatch.team2_player1_id, oldMatch.team2_player2_id].filter(Boolean));
+      for (const pid of allAffectedIds) {
+        await recalculatePlayerStreakAndForm(client, clubId, pid);
+      }
+
+      const playersById = await loadPlayersById(client, updateRes.rows);
+      await client.query('COMMIT');
+
+      res.json({ success: true, data: toMatch(updateRes.rows[0], playersById) });
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      console.error('updateMatch error:', err);
+      res.status(500).json({ success: false, error: 'Database transaction error' });
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error('updateMatch outer error:', err);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
 module.exports = {
   getMatches,
   recordMatch,
   createMatch: recordMatch,
+  deleteMatch,
+  updateMatch,
 };

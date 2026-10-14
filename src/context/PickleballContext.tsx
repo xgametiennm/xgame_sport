@@ -28,6 +28,8 @@ interface PickleballContextType {
   setLang: (lang: 'vi' | 'en') => void;
   refreshClub: () => Promise<void>;
   recordNewMatch: (newMatch: MatchResult) => Promise<void>;
+  updateMatch: (matchId: string, updatedMatch: MatchResult) => Promise<void>;
+  deleteMatch: (matchId: string) => Promise<void>;
   addNewPlayer: (name: string, doublesRating: number, singlesRating: number, email?: string) => Promise<Player>;
   getPlayerById: (id: string) => Player | undefined;
   updateClub: (patch: Partial<Pick<ClubInfo, 'name' | 'description'>>) => Promise<void>;
@@ -253,6 +255,16 @@ export const PickleballProvider: React.FC<{ user: UserAccount; children: React.R
     await refreshClub();
   };
 
+  const updateMatch = async (matchId: string, updatedMatch: MatchResult) => {
+    await api.updateMatch(matchId, { ...updatedMatch, clubId: selectedClub.id });
+    await refreshClub();
+  };
+
+  const deleteMatch = async (matchId: string) => {
+    await api.deleteMatch(matchId);
+    await refreshClub();
+  };
+
   return (
     <PickleballContext.Provider
       value={{
@@ -271,6 +283,8 @@ export const PickleballProvider: React.FC<{ user: UserAccount; children: React.R
         setLang,
         refreshClub,
         recordNewMatch,
+        updateMatch,
+        deleteMatch,
         addNewPlayer,
         getPlayerById,
         updateClub,

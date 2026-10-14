@@ -12,8 +12,12 @@ import {
   ChevronDown, 
   ChevronUp, 
   Zap,
-  Users
+  Users,
+  Edit3,
+  Trash2
 } from 'lucide-react';
+import { EditMatchModal } from './EditMatchModal';
+import { MatchResult } from '../types/pickleball';
 
 interface MatchHistoryProps {
   onOpenRecordMatch: () => void;
@@ -23,7 +27,8 @@ interface MatchHistoryProps {
 const PAGE_SIZE = 15;
 
 export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, onSelectPlayer }) => {
-  const { matches, selectedClub } = usePickleball();
+  const { matches, selectedClub, isManager, deleteMatch } = usePickleball();
+  const [editingMatch, setEditingMatch] = useState<MatchResult | null>(null);
 
   // Filters state
   const [searchQuery, setSearchQuery] = useState('');
@@ -31,6 +36,26 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
   const [selectedImportance, setSelectedImportance] = useState<'all' | MatchImportance>('all');
   const [expandedMatchId, setExpandedMatchId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  const handleDeleteMatch = async (match: MatchResult) => {
+    const s1 = match.sets && match.sets.length > 0 ? match.sets[0].team1 : match.totalScoreTeam1;
+    const s2 = match.sets && match.sets.length > 0 ? match.sets[0].team2 : match.totalScoreTeam2;
+    const p1 = match.team1.player1?.name || 'Đội 1';
+    const p2 = match.team2.player1?.name || 'Đội 2';
+    const ok = window.confirm(
+      `Bạn có chắc chắn muốn xóa kết quả trận đấu này?\n\n` +
+      `Trận: ${p1} vs ${p2} (${match.courtName || 'Sân CLB'})\n` +
+      `Tỉ số: ${s1} - ${s2}\n\n` +
+      `⚠️ Lưu ý: Hệ thống sẽ tự động hoàn tác điểm DUPR, số trận thắng/thua, hiệu số và chuỗi của các VĐV liên quan.`
+    );
+    if (!ok) return;
+
+    try {
+      await deleteMatch(match.id);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Không xóa được trận đấu');
+    }
+  };
 
   const handleSearchChange = (val: string) => {
     setSearchQuery(val);
@@ -448,6 +473,27 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
                         📍 {match.courtName}
                       </span>
                     )}
+
+                    {/* Last Updated Badge */}
+                    {match.updatedByName && (
+                      <span
+                        title={`Kết quả trận đấu được cập nhật lần cuối bởi ${match.updatedByName}${match.updatedAt ? ` lúc ${formatDate(match.updatedAt)}` : ''}`}
+                        style={{
+                          padding: '3px 8px',
+                          borderRadius: 6,
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          background: '#fefce8',
+                          color: '#854d0e',
+                          border: '1px solid #fef08a',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                      >
+                        <span>✏️ Đã sửa bởi: {match.updatedByName}</span>
+                      </span>
+                    )}
                   </div>
 
                   {/* Date & Expand Button */}
@@ -456,6 +502,59 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
                       <Calendar size={14} />
                       <span>{formatDate(match.date)}</span>
                     </div>
+
+                    {isManager && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingMatch(match);
+                          }}
+                          title="Quản trị viên & Chủ CLB: Chỉnh sửa kết quả trận đấu"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            padding: '4px 10px',
+                            borderRadius: 8,
+                            border: '1px solid #cbd5e1',
+                            background: '#ffffff',
+                            color: '#0d5e46',
+                            fontSize: '0.75rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                          }}
+                        >
+                          <Edit3 size={13} color="#059669" />
+                          <span>Sửa</span>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteMatch(match);
+                          }}
+                          title="Quản trị viên & Chủ CLB: Xóa kết quả trận đấu"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            padding: '4px 10px',
+                            borderRadius: 8,
+                            border: '1px solid #fecaca',
+                            background: '#fef2f2',
+                            color: '#dc2626',
+                            fontSize: '0.75rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                          }}
+                        >
+                          <Trash2 size={13} color="#dc2626" />
+                          <span>Xóa</span>
+                        </button>
+                      </div>
+                    )}
 
                     <button
                       onClick={() => toggleExpand(match.id)}
@@ -727,6 +826,31 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
                           </div>
                         </div>
                       )}
+
+                      {/* Last Updated Note */}
+                      {match.updatedByName && (
+                        <div style={{
+                          background: '#fefce8',
+                          padding: 12,
+                          borderRadius: 10,
+                          border: '1px solid #fef08a',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'center',
+                        }}>
+                          <div style={{ fontWeight: 800, color: '#854d0e', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span>✏️ Lịch sử chỉnh sửa</span>
+                          </div>
+                          <div style={{ fontSize: '0.8rem', color: '#713f12', lineHeight: 1.4 }}>
+                            Cập nhật lần cuối bởi: <strong>{match.updatedByName}</strong>
+                            {match.updatedAt && (
+                              <div style={{ fontSize: '0.74rem', color: '#854d0e', marginTop: 2 }}>
+                                Thời gian: {formatDate(match.updatedAt)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -758,6 +882,13 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
           )}
         </div>
       )}
+
+      {/* Edit Match Modal for Admins & Owners */}
+      <EditMatchModal
+        isOpen={!!editingMatch}
+        match={editingMatch}
+        onClose={() => setEditingMatch(null)}
+      />
     </div>
   );
 };

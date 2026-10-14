@@ -66,6 +66,9 @@ export interface MatchResult {
   notes?: string;
   courtName?: string;
   clubId?: string;
+  updatedByName?: string;
+  updatedAt?: string;
+  updatedByRole?: string;
 }
 
 export interface DuprCalcInput {
@@ -134,3 +137,35 @@ export interface ClubInfo {
   joinCode: string; // shared with people invited to join
   myRole: ClubRole; // the signed-in user's role in this club
 }
+
+export interface LiveCourtPlayer {
+  id: string;
+  name: string;
+  avatar: string;
+  doublesRating?: number;
+}
+
+export interface LiveCourtState {
+  id: string;
+  courtName: string;
+  clubId?: string;
+  clubName?: string;
+  scoringType: ScoringType;
+  targetScore: number;
+  score1: number;
+  score2: number;
+  serverNumber: 1 | 2;
+  servingTeam: 1 | 2;
+  t1Right: LiveCourtPlayer;
+  t1Left: LiveCourtPlayer;
+  t2Right: LiveCourtPlayer;
+  t2Left: LiveCourtPlayer;
+  activeServerId: string;
+  isGameOver: boolean;
+  winnerTeam?: 1 | 2 | null;
+  lastAction?: string;
+  scorerName?: string;
+  spectatorsCount?: number;
+  updatedAt: string;
+}
+

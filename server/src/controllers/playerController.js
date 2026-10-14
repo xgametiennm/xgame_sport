@@ -99,6 +99,18 @@ async function loadManagedPlayer(req, res) {
   return { player, membership };
 }
 
+const LAST_OWNER_ERROR = 'CLB phải có ít nhất một chủ CLB. Hãy thêm chủ CLB khác trước.';
+
+// Locks the club's owner rows for the transaction, so two owners stepping down at the
+// same time cannot leave the club without one
+async function lockOwnerIds(client, clubId) {
+  const result = await client.query(
+    "SELECT id FROM players WHERE club_id = $1 AND role = 'owner' AND removed_at IS NULL FOR UPDATE",
+    [clubId]
+  );
+  return result.rows.map((row) => row.id);
+}
+
 async function updatePlayerRole(req, res) {
   const { role } = req.body;
   if (!CLUB_ROLES.includes(role)) {
@@ -111,26 +123,26 @@ async function updatePlayerRole(req, res) {
     if (!managed) return;
     const { player, membership } = managed;
 
-    // Ownership can only be handed over by the owner, and only to a member with an account
-    if ((role === 'owner' || player.role === 'owner') && membership.role !== 'owner') {
-      return res.status(403).json({ success: false, error: 'Chỉ chủ CLB mới thay đổi được quyền chủ CLB' });
+    await client.query('BEGIN');
+    const ownerIds = await lockOwnerIds(client, player.club_id);
+    const targetIsOwner = ownerIds.includes(player.id);
+    const reject = async (status, error) => {
+      await client.query('ROLLBACK');
+      res.status(status).json({ success: false, error });
+    };
+
+    // A club can have several owners. Only an owner grants or revokes ownership,
+    // and only a member with an account can hold it.
+    if ((role === 'owner' || targetIsOwner) && !ownerIds.includes(membership.id)) {
+      return reject(403, 'Chỉ chủ CLB mới thay đổi được quyền chủ CLB');
     }
     if (role === 'owner' && !player.user_id) {
-      return res.status(400).json({ success: false, error: 'Chỉ chuyển được quyền chủ CLB cho thành viên có tài khoản' });
+      return reject(400, 'Chỉ cấp được quyền chủ CLB cho thành viên có tài khoản');
     }
-    if (player.role === 'owner' && role !== 'owner') {
-      return res.status(400).json({ success: false, error: 'CLB phải có chủ. Hãy chuyển quyền chủ CLB cho người khác trước.' });
+    if (targetIsOwner && role !== 'owner' && ownerIds.length === 1) {
+      return reject(400, LAST_OWNER_ERROR);
     }
 
-    await client.query('BEGIN');
-    if (role === 'owner') {
-      // A club has a single owner: the previous one steps down to admin
-      await client.query(
-        "UPDATE players SET role = 'admin', updated_at = NOW() WHERE club_id = $1 AND role = 'owner' AND id <> $2",
-        [player.club_id, player.id]
-      );
-      await client.query('UPDATE clubs SET owner_user_id = $1 WHERE id = $2', [player.user_id, player.club_id]);
-    }
     await client.query('UPDATE players SET role = $1, updated_at = NOW() WHERE id = $2', [role, player.id]);
     await client.query('COMMIT');
 
@@ -146,20 +158,35 @@ async function updatePlayerRole(req, res) {
 
 // Members are hidden rather than deleted so their past matches stay intact
 async function removePlayer(req, res) {
+  const client = await db.pool.connect();
   try {
     const managed = await loadManagedPlayer(req, res);
     if (!managed) return;
-    const { player } = managed;
-    if (player.role === 'owner') {
-      return res.status(400).json({ success: false, error: 'Không thể xóa chủ CLB. Hãy chuyển quyền chủ CLB trước.' });
+    const { player, membership } = managed;
+
+    await client.query('BEGIN');
+    const ownerIds = await lockOwnerIds(client, player.club_id);
+    if (ownerIds.includes(player.id)) {
+      // An owner is removed only by an owner, and never the last one
+      const error = !ownerIds.includes(membership.id)
+        ? [403, 'Chỉ chủ CLB mới xóa được chủ CLB khác']
+        : ownerIds.length === 1 ? [400, LAST_OWNER_ERROR] : null;
+      if (error) {
+        await client.query('ROLLBACK');
+        return res.status(error[0]).json({ success: false, error: error[1] });
+      }
     }
 
     // Any management role ends with the membership: rejoining starts again as a plain member
-    await db.query("UPDATE players SET removed_at = NOW(), role = 'member', updated_at = NOW() WHERE id = $1", [player.id]);
+    await client.query("UPDATE players SET removed_at = NOW(), role = 'member', updated_at = NOW() WHERE id = $1", [player.id]);
+    await client.query('COMMIT');
     res.json({ success: true });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error('removePlayer error:', err);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
+  } finally {
+    client.release();
   }
 }
 

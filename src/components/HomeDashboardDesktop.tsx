@@ -1,10 +1,13 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { usePickleball } from '../context/PickleballContext';
-import { Player } from '../types/pickleball';
+import { Player, LiveCourtState } from '../types/pickleball';
+import { api } from '../services/api';
 import { 
   MapPin,
   Plus,
-  ChevronRight
+  ChevronRight,
+  Eye,
+  Radio
 } from 'lucide-react';
 
 interface HomeDashboardDesktopProps {
@@ -22,6 +25,20 @@ export const HomeDashboardDesktop: React.FC<HomeDashboardDesktopProps> = ({
 }) => {
   const { players, matches, selectedClub, setActiveTab } = usePickleball();
   const [rankingMode, setRankingMode] = useState<'wins' | 'points'>('wins');
+  const [liveCourts, setLiveCourts] = useState<LiveCourtState[]>([]);
+
+  useEffect(() => {
+    let timer: any = null;
+    const fetchLive = async () => {
+      try {
+        const courts = await api.getLiveCourts(selectedClub.id);
+        if (Array.isArray(courts)) setLiveCourts(courts);
+      } catch {}
+    };
+    fetchLive();
+    timer = setInterval(fetchLive, 4000);
+    return () => clearInterval(timer);
+  }, [selectedClub.id]);
 
   const sortedPlayers = useMemo(() => {
     return [...players].sort((a, b) => {
@@ -127,6 +144,104 @@ export const HomeDashboardDesktop: React.FC<HomeDashboardDesktopProps> = ({
           <span>+ Ghi Trận Đấu Mới</span>
         </button>
       </div>
+
+      {/* 1.5. LIVE MATCHES BANNER (If any match is playing on courts right now) */}
+      {liveCourts.length > 0 && (
+        <div style={{
+          marginBottom: 24,
+          padding: '16px 20px',
+          borderRadius: 20,
+          background: 'linear-gradient(135deg, #064030, #065f46)',
+          border: '1.5px solid #059669',
+          color: '#ffffff',
+          boxShadow: '0 8px 24px rgba(6, 64, 48, 0.25)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                background: '#e11d48',
+                color: '#ffffff',
+                padding: '3px 9px',
+                borderRadius: 999,
+                fontSize: '0.72rem',
+                fontWeight: 900,
+                letterSpacing: '0.04em',
+              }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ffffff', animation: 'pulse 1.2s infinite' }} />
+                TRỰC TIẾP TRÊN SÂN (LIVE)
+              </span>
+              <span style={{ fontSize: '0.86rem', color: '#a7f3d0', fontWeight: 700 }}>
+                {liveCourts.length} trận đang tranh tài thời gian thực
+              </span>
+            </div>
+
+            <button
+              onClick={() => setActiveTab('scoreboard')}
+              className="btn-court"
+              style={{ padding: '5px 12px', fontSize: '0.78rem', borderRadius: 999 }}
+            >
+              Mở Tất Cả Bảng Điểm ➔
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+            {liveCourts.map((court) => (
+              <div
+                key={court.id}
+                onClick={() => {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set('tab', 'scoreboard');
+                  url.searchParams.set('court', court.id);
+                  url.searchParams.set('mode', 'spectator');
+                  window.history.replaceState(null, '', url);
+                  setActiveTab('scoreboard');
+                }}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  backdropFilter: 'blur(8px)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  borderRadius: 14,
+                  padding: '12px 14px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '0.72rem', color: '#bef264', fontWeight: 800, textTransform: 'uppercase' }}>
+                    {court.courtName || 'Sân đấu'}
+                  </div>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 800, marginTop: 2, color: '#ffffff' }}>
+                    {court.t1Right?.name?.split(' ').slice(-1) || 'Đ1'}/{court.t1Left?.name?.split(' ').slice(-1) || 'Đ1'} vs {court.t2Right?.name?.split(' ').slice(-1) || 'Đ2'}/{court.t2Left?.name?.split(' ').slice(-1) || 'Đ2'}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 3 }}>
+                    {court.isGameOver ? '🏁 Đã kết thúc' : `🎾 Người phát #${court.serverNumber || 1}`}
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '1.6rem',
+                    fontWeight: 900,
+                    color: '#bef264',
+                    lineHeight: 1,
+                  }}>
+                    {court.score1} - {court.score2}
+                  </div>
+                  <ChevronRight size={18} color="#bef264" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 2. SEASON HIGHLIGHT CARDS (3 Columns) */}
       <div style={{ marginBottom: 28 }}>
@@ -278,9 +393,14 @@ export const HomeDashboardDesktop: React.FC<HomeDashboardDesktopProps> = ({
         {/* Left Column: Quick Standings */}
         <div className="card" style={{ padding: '20px 24px', borderRadius: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0f172a', margin: 0 }}>
-              Top Bảng Xếp Hạng CLB
-            </h3>
+            <div>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0f172a', margin: 0 }}>
+                Top Bảng Xếp Hạng CLB (Đánh Đôi)
+              </h3>
+              <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: 2 }}>
+                Thể thức Đôi 2v2 tiêu chuẩn CLB
+              </div>
+            </div>
 
             {/* Toggle Switch */}
             <div style={{ display: 'flex', background: '#f1f5f9', padding: 3, borderRadius: 999 }}>
@@ -350,7 +470,7 @@ export const HomeDashboardDesktop: React.FC<HomeDashboardDesktopProps> = ({
                     />
                     <div>
                       <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0f172a' }}>{player.name}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>DUPR {player.doublesRating.toFixed(3)}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>DUPR Đôi: {player.doublesRating.toFixed(3)}</div>
                     </div>
                   </div>
 
@@ -360,7 +480,7 @@ export const HomeDashboardDesktop: React.FC<HomeDashboardDesktopProps> = ({
                         {rankingMode === 'wins' ? `${player.winsDoubles} trận` : player.doublesRating.toFixed(3)}
                       </div>
                       <div style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 700 }}>
-                        {rankingMode === 'wins' ? 'Đã thắng' : 'Rating chuẩn'}
+                        {rankingMode === 'wins' ? 'Thắng đôi' : 'Rating DUPR đôi'}
                       </div>
                     </div>
                     <ChevronRight size={16} color="#cbd5e1" />

@@ -36,9 +36,14 @@ export const ClubStandingsMobile: React.FC<ClubStandingsMobileProps> = ({ onSele
   return (
     <MobilePage>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-        <h1 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap' }}>
-          Bảng xếp hạng
-        </h1>
+        <div>
+          <h1 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap', margin: 0 }}>
+            Bảng xếp hạng (Đôi)
+          </h1>
+          <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 2 }}>
+            Thể thức Đôi 2v2 tiêu chuẩn CLB
+          </div>
+        </div>
         <PillToggle
           value={activeFilter}
           onChange={setActiveFilter}

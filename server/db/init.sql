@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS players (
     streak INT DEFAULT 0,
     form VARCHAR(32)[] DEFAULT ARRAY[]::VARCHAR(32)[],
     rank_delta INT DEFAULT 0,
-    role VARCHAR(32) DEFAULT 'member', -- 'owner', 'admin', 'member'
+    role VARCHAR(32) DEFAULT 'member', -- 'owner' (one or more per club), 'admin', 'member'
     removed_at TIMESTAMP WITH TIME ZONE, -- set when removed from the club; kept for match history
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -93,6 +93,8 @@ CREATE TABLE IF NOT EXISTS matches (
     delta_rating NUMERIC(6, 3) DEFAULT 0.040,
     notes TEXT,
     details JSONB, -- per-team rating deltas and win probabilities
+    updated_by_name VARCHAR(128),
+    updated_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -104,6 +106,19 @@ CREATE TABLE IF NOT EXISTS play_sessions (
     data JSONB NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ------------------------------------------------------------------------------
+-- 6. LIVE COURTS TABLE (Real-time live matches across courts)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS live_courts (
+    id VARCHAR(64) PRIMARY KEY,
+    club_id VARCHAR(64) REFERENCES clubs(id) ON DELETE CASCADE,
+    court_name VARCHAR(128) NOT NULL,
+    data JSONB NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_live_courts_club ON live_courts(club_id);
 
 -- ------------------------------------------------------------------------------
 -- INDEXES

@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { usePickleball } from '../context/PickleballContext';
-import { Player } from '../types/pickleball';
+import { Player, LiveCourtState } from '../types/pickleball';
+import { api } from '../services/api';
 import { Settings, BarChart3, Trophy, ChevronRight, ChevronDown, Handshake, Check, Plus } from 'lucide-react';
 import { Avatar, LeaderboardTable, MobileCard, MobilePage, PillToggle } from './MobileUi';
 
@@ -77,6 +78,48 @@ export const HomeDashboardMobile: React.FC<HomeDashboardMobileProps> = ({ onSele
   const { players, matches, clubs, selectedClub, setSelectedClub, setActiveTab } = usePickleball();
   const [rankingMode, setRankingMode] = useState<'wins' | 'friendly'>('wins');
   const [showClubSheet, setShowClubSheet] = useState(false);
+  const [liveCourts, setLiveCourts] = useState<LiveCourtState[]>([]);
+
+  useEffect(() => {
+    let timer: any = null;
+    const fetchLive = async () => {
+      try {
+        const courts = await api.getLiveCourts(selectedClub.id);
+        if (Array.isArray(courts)) setLiveCourts(courts);
+      } catch {}
+    };
+    fetchLive();
+    timer = setInterval(fetchLive, 4000);
+    return () => clearInterval(timer);
+  }, [selectedClub.id]);
+
+  const monthlyStats = useMemo(() => {
+    const now = new Date();
+    const curMonth = now.getMonth();
+    const curYear = now.getFullYear();
+    const lastMonth = curMonth === 0 ? 11 : curMonth - 1;
+    const lastYear = curMonth === 0 ? curYear - 1 : curYear;
+
+    let thisMonthCount = 0;
+    let lastMonthCount = 0;
+
+    matches.forEach((m) => {
+      if (!m.date) return;
+      const d = new Date(m.date);
+      if (isNaN(d.getTime())) return;
+      if (d.getMonth() === curMonth && d.getFullYear() === curYear) {
+        thisMonthCount++;
+      } else if (d.getMonth() === lastMonth && d.getFullYear() === lastYear) {
+        lastMonthCount++;
+      }
+    });
+
+    return {
+      thisMonthCount,
+      lastMonthCount,
+      diff: thisMonthCount - lastMonthCount,
+    };
+  }, [matches]);
 
   const sortedPlayers = useMemo(() => {
     return [...players].sort((a, b) => {
@@ -172,6 +215,82 @@ export const HomeDashboardMobile: React.FC<HomeDashboardMobileProps> = ({ onSele
         </button>
       </div>
 
+      {/* 1.5. LIVE MATCHES BANNER MOBILE */}
+      {liveCourts.length > 0 && (
+        <div style={{
+          marginBottom: 14,
+          padding: '12px 14px',
+          borderRadius: 16,
+          background: 'linear-gradient(135deg, #064030, #047857)',
+          border: '1.5px solid #059669',
+          color: '#ffffff',
+          boxShadow: '0 4px 16px rgba(6, 64, 48, 0.25)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              background: '#e11d48',
+              color: '#ffffff',
+              padding: '2px 8px',
+              borderRadius: 999,
+              fontSize: '0.68rem',
+              fontWeight: 900,
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ffffff' }} />
+              TRỰC TIẾP TRÊN SÂN
+            </span>
+            <button
+              onClick={() => setActiveTab('scoreboard')}
+              style={{
+                background: '#bef264',
+                color: '#064030',
+                border: 'none',
+                padding: '3px 8px',
+                borderRadius: 999,
+                fontSize: '0.68rem',
+                fontWeight: 900,
+                cursor: 'pointer',
+              }}
+            >
+              Xem ngay ➔
+            </button>
+          </div>
+          {liveCourts.slice(0, 2).map((c) => (
+            <div
+              key={c.id}
+              onClick={() => {
+                const url = new URL(window.location.href);
+                url.searchParams.set('tab', 'scoreboard');
+                url.searchParams.set('court', c.id);
+                url.searchParams.set('mode', 'spectator');
+                window.history.replaceState(null, '', url);
+                setActiveTab('scoreboard');
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '6px 0',
+                borderTop: '1px solid rgba(255,255,255,0.1)',
+                cursor: 'pointer',
+              }}
+            >
+              <div>
+                <div style={{ fontSize: '0.7rem', color: '#a7f3d0', fontWeight: 800 }}>{c.courtName}</div>
+                <div style={{ fontSize: '0.78rem', fontWeight: 800 }}>
+                  {c.t1Right?.name?.split(' ').slice(-1) || 'Đ1'}/{c.t1Left?.name?.split(' ').slice(-1) || 'Đ1'} vs {c.t2Right?.name?.split(' ').slice(-1) || 'Đ2'}/{c.t2Left?.name?.split(' ').slice(-1) || 'Đ2'}
+                </div>
+              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '1.25rem', fontWeight: 900, color: '#bef264' }}>
+                {c.score1} - {c.score2}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* 2. HERO STATS CARD */}
       <MobileCard
         onClick={() => setActiveTab('matches')}
@@ -211,8 +330,8 @@ export const HomeDashboardMobile: React.FC<HomeDashboardMobileProps> = ({ onSele
             width: 30,
             height: 30,
             borderRadius: 10,
-            background: '#ecfdf5',
-            color: '#059669',
+            background: monthlyStats.diff < 0 ? '#fef2f2' : '#ecfdf5',
+            color: monthlyStats.diff < 0 ? '#ef4444' : '#059669',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -220,10 +339,49 @@ export const HomeDashboardMobile: React.FC<HomeDashboardMobileProps> = ({ onSele
             <BarChart3 size={17} />
           </div>
           <div>
-            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.86rem', color: '#059669' }}>
-              +12 trận
-            </div>
-            <div style={{ fontSize: '0.6rem', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>so với tháng trước</div>
+            {monthlyStats.lastMonthCount > 0 ? (
+              <>
+                <div style={{
+                  fontFamily: 'var(--font-display)',
+                  fontWeight: 800,
+                  fontSize: '0.86rem',
+                  color: monthlyStats.diff < 0 ? '#ef4444' : '#059669',
+                }}>
+                  {monthlyStats.diff >= 0 ? `+${monthlyStats.diff}` : monthlyStats.diff} trận
+                </div>
+                <div style={{ fontSize: '0.6rem', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                  so với tháng trước
+                </div>
+              </>
+            ) : monthlyStats.thisMonthCount > 0 ? (
+              <>
+                <div style={{
+                  fontFamily: 'var(--font-display)',
+                  fontWeight: 800,
+                  fontSize: '0.86rem',
+                  color: '#059669',
+                }}>
+                  {monthlyStats.thisMonthCount} trận
+                </div>
+                <div style={{ fontSize: '0.6rem', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                  trong tháng này
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{
+                  fontFamily: 'var(--font-display)',
+                  fontWeight: 800,
+                  fontSize: '0.86rem',
+                  color: '#059669',
+                }}>
+                  {selectedClub.courtsCount || 4} sân
+                </div>
+                <div style={{ fontSize: '0.6rem', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                  sân hoạt động
+                </div>
+              </>
+            )}
           </div>
         </div>
       </MobileCard>

@@ -1,4 +1,4 @@
-import { ClubInfo, ClubRole, Player, MatchResult, UserAccount } from '../types/pickleball';
+import { ClubInfo, ClubRole, Player, MatchResult, UserAccount, LiveCourtState } from '../types/pickleball';
 import { PlaySession } from '../utils/playSession';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -103,6 +103,14 @@ class ApiService {
     return (await this.request('/matches', 'POST', { ...match, clubId })).data;
   }
 
+  async updateMatch(matchId: string, payload: Partial<MatchResult> & { clubId?: string }): Promise<MatchResult> {
+    return (await this.request(`/matches/${encodeURIComponent(matchId)}`, 'PATCH', payload)).data;
+  }
+
+  async deleteMatch(matchId: string): Promise<void> {
+    await this.request(`/matches/${encodeURIComponent(matchId)}`, 'DELETE');
+  }
+
   // Auth
   async register(email: string, name: string, password?: string): Promise<UserAccount> {
     return (await this.request('/auth/register', 'POST', { email, name, password })).user;
@@ -131,6 +139,32 @@ class ApiService {
 
   async logout(): Promise<void> {
     await this.request('/auth/logout', 'POST');
+  }
+
+  // Real-time Live Courts
+  async getLiveCourts(clubId?: string): Promise<LiveCourtState[]> {
+    const q = clubId ? `?clubId=${encodeURIComponent(clubId)}` : '';
+    return (await this.request(`/live/courts${q}`)).data;
+  }
+
+  async getLiveCourt(courtId: string): Promise<LiveCourtState> {
+    return (await this.request(`/live/court/${encodeURIComponent(courtId)}`)).data;
+  }
+
+  async updateLiveCourt(courtId: string, data: Partial<LiveCourtState>): Promise<LiveCourtState> {
+    return (await this.request(`/live/court/${encodeURIComponent(courtId)}`, 'POST', data)).data;
+  }
+
+  async finishLiveCourt(courtId: string): Promise<void> {
+    await this.request(`/live/court/${encodeURIComponent(courtId)}/finish`, 'POST');
+  }
+
+  getLiveStreamUrl(courtId?: string, clubId?: string): string {
+    const params = new URLSearchParams();
+    if (courtId) params.append('courtId', courtId);
+    if (clubId) params.append('clubId', clubId);
+    const qs = params.toString();
+    return `${this.baseUrl}/live/stream${qs ? `?${qs}` : ''}`;
   }
 }
 

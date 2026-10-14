@@ -10,12 +10,24 @@ const SCHEMA_UPGRADE = `
   ALTER TABLE clubs ADD COLUMN IF NOT EXISTS owner_user_id VARCHAR(64);
   ALTER TABLE clubs ADD COLUMN IF NOT EXISTS join_code VARCHAR(16) UNIQUE;
   ALTER TABLE matches ADD COLUMN IF NOT EXISTS details JSONB;
+  ALTER TABLE matches ADD COLUMN IF NOT EXISTS updated_by_name VARCHAR(128);
+  ALTER TABLE matches ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE;
 
   CREATE TABLE IF NOT EXISTS play_sessions (
     club_id VARCHAR(64) PRIMARY KEY REFERENCES clubs(id) ON DELETE CASCADE,
     data JSONB NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS live_courts (
+    id VARCHAR(64) PRIMARY KEY,
+    club_id VARCHAR(64) REFERENCES clubs(id) ON DELETE CASCADE,
+    court_name VARCHAR(128) NOT NULL,
+    data JSONB NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_live_courts_club ON live_courts(club_id);
 
   CREATE INDEX IF NOT EXISTS idx_players_user_id ON players(user_id);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_players_club_user ON players(club_id, user_id) WHERE user_id IS NOT NULL;

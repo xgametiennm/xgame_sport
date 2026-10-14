@@ -189,15 +189,22 @@ export const ClubStandingsDesktop: React.FC<ClubStandingsDesktopProps> = ({
                 borderTop: '1px solid rgba(0,0,0,0.08)',
               }}>
                 <div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>DUPR Rating</div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>
+                    DUPR {format === 'doubles' ? 'Đôi' : 'Đơn'}
+                  </div>
                   <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#059669' }}>
                     {(format === 'doubles' ? player.doublesRating : player.singlesRating).toFixed(3)}
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>Tổng Trận Thắng</div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>
+                    Thắng ({format === 'doubles' ? 'Đôi' : 'Đơn'})
+                  </div>
                   <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#b45309' }}>
-                    {player.winsDoubles} <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>trận</span>
+                    {format === 'doubles' ? player.winsDoubles : player.winsSingles}{' '}
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
+                      / {format === 'doubles' ? player.matchesPlayedDoubles : player.matchesPlayedSingles} trận
+                    </span>
                   </div>
                 </div>
               </div>
@@ -301,6 +308,33 @@ export const ClubStandingsDesktop: React.FC<ClubStandingsDesktopProps> = ({
             />
           </div>
         </div>
+
+        {/* Format Explanation Banner */}
+        <div style={{
+          marginTop: 14,
+          padding: '10px 14px',
+          borderRadius: 12,
+          background: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          fontSize: '0.82rem',
+          color: '#475569',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 8,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: '1rem' }}>ℹ️</span>
+            <span>
+              Đang xem bảng xếp hạng: <strong style={{ color: '#064030' }}>{format === 'doubles' ? 'Đôi (Doubles 2v2)' : 'Đơn (Singles 1v1)'}</strong>.
+              Các cột <em>Điểm DUPR, Thắng/Tổng, Tỷ Lệ</em> hiển thị riêng theo thể thức này.
+            </span>
+          </div>
+          <div style={{ fontSize: '0.76rem', color: '#64748b', fontStyle: 'italic' }}>
+            * Cột Chuỗi & Phong độ tính chung các trận gần nhất của VĐV (gồm cả Đơn & Đôi).
+          </div>
+        </div>
       </div>
 
       {/* 4. FULL DATA TABLE (Desktop) */}
@@ -310,11 +344,21 @@ export const ClubStandingsDesktop: React.FC<ClubStandingsDesktopProps> = ({
             <tr style={{ background: '#f8fafc', borderBottom: '1.5px solid #e2e8f0', color: '#64748b', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               <th style={{ padding: '16px 20px', width: 70, textAlign: 'center' }}>Hạng</th>
               <th style={{ padding: '16px 20px' }}>Vận Động Viên</th>
-              <th style={{ padding: '16px 20px' }}>Điểm DUPR</th>
-              <th style={{ padding: '16px 20px' }}>Trận Thắng / Tổng</th>
-              <th style={{ padding: '16px 20px' }}>Tỷ Lệ Thắng</th>
-              <th style={{ padding: '16px 20px' }}>Chuỗi</th>
-              <th style={{ padding: '16px 20px' }}>Phong Độ (5 trận)</th>
+              <th style={{ padding: '16px 20px' }}>
+                Điểm DUPR <span style={{ color: '#059669', fontWeight: 800 }}>({format === 'doubles' ? 'Đôi' : 'Đơn'})</span>
+              </th>
+              <th style={{ padding: '16px 20px' }}>
+                Thắng / Tổng <span style={{ color: '#059669', fontWeight: 800 }}>({format === 'doubles' ? 'Đôi' : 'Đơn'})</span>
+              </th>
+              <th style={{ padding: '16px 20px' }}>
+                Tỷ Lệ Thắng <span style={{ color: '#059669', fontWeight: 800 }}>({format === 'doubles' ? 'Đôi' : 'Đơn'})</span>
+              </th>
+              <th style={{ padding: '16px 20px' }} title="Chuỗi thắng/thua các trận gần nhất của VĐV (tính cả Đơn & Đôi)">
+                Chuỗi <span style={{ fontSize: '0.7rem', textTransform: 'none', color: '#94a3b8' }}>(Gần nhất)</span>
+              </th>
+              <th style={{ padding: '16px 20px' }} title="Kết quả 5 trận gần nhất (tính cả Đơn & Đôi)">
+                Phong Độ (5 trận)
+              </th>
               <th style={{ padding: '16px 20px', textAlign: 'right' }}>Thao Tác</th>
             </tr>
           </thead>
@@ -364,22 +408,9 @@ export const ClubStandingsDesktop: React.FC<ClubStandingsDesktopProps> = ({
 
                   {/* DUPR Rating */}
                   <td style={{ padding: '14px 20px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontWeight: 900, fontSize: '1.05rem', color: '#059669', fontFamily: 'var(--font-mono)' }}>
-                        {rating.toFixed(3)}
-                      </span>
-                      <span style={{
-                        fontSize: '0.7rem',
-                        padding: '2px 8px',
-                        borderRadius: 999,
-                        background: '#ecfdf5',
-                        color: '#059669',
-                        fontWeight: 700,
-                        border: '1px solid #a7f3d0'
-                      }}>
-                        {tier.nameVi}
-                      </span>
-                    </div>
+                    <span style={{ fontWeight: 900, fontSize: '1.05rem', color: '#059669', fontFamily: 'var(--font-mono)' }}>
+                      {rating.toFixed(3)}
+                    </span>
                   </td>
 
                   {/* Matches won */}

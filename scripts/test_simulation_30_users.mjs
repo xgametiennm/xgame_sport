@@ -309,6 +309,19 @@ class UserClient {
     });
   }
 
+  async updateMatch(matchId, payload) {
+    return this.request(`/matches/${encodeURIComponent(matchId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async deleteMatch(matchId) {
+    return this.request(`/matches/${encodeURIComponent(matchId)}`, {
+      method: 'DELETE',
+    });
+  }
+
   async getSession(clubId) {
     return this.request(`/clubs/${clubId}/session`);
   }
@@ -538,6 +551,34 @@ async function runSimulationAndTests() {
   assert.strictEqual(promoteRes2.status, 200);
   success(`Thăng cấp Admin thành công cho ${targetAdmin1.name} và ${targetAdmin2.name}`);
 
+  // Test nhiều chủ CLB trên CLB 2 (trả lại trạng thái ban đầu sau khi test)
+  log('Roles', 'Kiểm tra CLB có nhiều chủ CLB (đồng chủ CLB)...');
+  const club2Players = (await clients[1].getPlayers(club2.id)).data.data;
+  const founder = club2Players.find(p => p.userId === clients[1].user.id);
+  const coOwner = club2Players.find(p => p.userId === clients[16].user.id);
+  assert(founder && coOwner, 'Phải tìm thấy chủ CLB 2 và thành viên được cấp quyền chủ CLB');
+
+  assert.strictEqual((await clients[1].updatePlayerRole(coOwner.id, 'owner')).status, 200);
+  const club2Owners = (await clients[1].getPlayers(club2.id)).data.data.filter(p => p.role === 'owner');
+  assert.strictEqual(club2Owners.length, 2, 'CLB 2 phải có 2 chủ CLB, chủ cũ không bị hạ quyền');
+  success('Cấp quyền chủ CLB cho thành viên thứ hai, chủ CLB cũ vẫn giữ quyền');
+
+  assert.strictEqual((await clients[16].updatePlayerRole(founder.id, 'admin')).status, 200);
+  success('Đồng chủ CLB hạ quyền được chủ CLB khác khi CLB vẫn còn chủ');
+
+  assert.strictEqual((await clients[16].updatePlayerRole(coOwner.id, 'member')).status, 400);
+  assert.strictEqual((await clients[16].removePlayer(coOwner.id)).status, 400);
+  success('Chặn chuẩn xác (400) khi chủ CLB cuối cùng tự hạ quyền hoặc bị xóa');
+
+  assert.strictEqual((await clients[1].updatePlayerRole(founder.id, 'owner')).status, 403);
+  assert.strictEqual((await clients[1].updatePlayerRole(coOwner.id, 'admin')).status, 403);
+  assert.strictEqual((await clients[1].removePlayer(coOwner.id)).status, 403);
+  success('Chặn chuẩn xác (403) khi quản trị viên cố cấp, thu hồi quyền chủ CLB hoặc xóa chủ CLB');
+
+  assert.strictEqual((await clients[16].updatePlayerRole(founder.id, 'owner')).status, 200);
+  assert.strictEqual((await clients[1].updatePlayerRole(coOwner.id, 'member')).status, 200);
+  success('Đã trả CLB 2 về một chủ CLB ban đầu');
+
   // Test Admin tạo Khách vãng lai (Guest Player chưa có tài khoản)
   log('Guests', 'Admin thêm khách vãng lai offline: "Khách VIP Triệu Vĩ"...');
   const guestRes = await clients[2].createGuestPlayer({
@@ -711,6 +752,38 @@ async function runSimulationAndTests() {
   const c2MatchesRes = await clients[1].getMatches(club2.id);
   assert.strictEqual(c2MatchesRes.data.data.length, 5);
   success('CLB 2 ghi nhận và cập nhật độc lập 5 trận đấu thành công');
+
+  // Kiểm tra quyền Chỉnh sửa và Xóa trận đấu (Admins & Owners only)
+  log('Matches', 'Kiểm tra quyền Chỉnh sửa & Xóa kết quả trận đấu (Admin & Chủ CLB)...');
+  const targetMatch = c2MatchesRes.data.data[0];
+
+  // 1. Thành viên bình thường (clients[5]) cố xóa -> Chặn 403
+  const forbiddenDelete = await clients[5].deleteMatch(targetMatch.id);
+  assert.strictEqual(forbiddenDelete.status, 403, 'Thành viên thường không được phép xóa kết quả trận đấu');
+  success('Chặn chuẩn xác (403) khi thành viên thường cố xóa trận đấu');
+
+  // 2. Thành viên bình thường cố sửa -> Chặn 403
+  const forbiddenUpdate = await clients[5].updateMatch(targetMatch.id, { courtName: 'Hacker Court' });
+  assert.strictEqual(forbiddenUpdate.status, 403, 'Thành viên thường không được phép sửa kết quả trận đấu');
+  success('Chặn chuẩn xác (403) khi thành viên thường cố sửa trận đấu');
+
+  // 3. Chủ CLB (clients[1]) sửa kết quả trận đấu
+  const updateRes = await clients[1].updateMatch(targetMatch.id, {
+    totalScoreTeam1: 15,
+    totalScoreTeam2: 13,
+    courtName: 'Sân VIP 1 - Đã cập nhật',
+    notes: 'Trận đấu kéo dài qua hiệp phụ',
+  });
+  assert.strictEqual(updateRes.status, 200);
+  assert.strictEqual(updateRes.data.data.courtName, 'Sân VIP 1 - Đã cập nhật');
+  success('Chủ CLB chỉnh sửa thông tin & tỉ số trận đấu thành công (200)');
+
+  // 4. Chủ CLB xóa 1 trận đấu
+  const deleteRes = await clients[1].deleteMatch(targetMatch.id);
+  assert.strictEqual(deleteRes.status, 200);
+  const remainingMatches = (await clients[1].getMatches(club2.id)).data.data;
+  assert.strictEqual(remainingMatches.length, 4, 'Số trận của CLB 2 phải giảm từ 5 xuống 4');
+  success('Chủ CLB xóa kết quả trận đấu thành công và tự động hoàn tác thống kê!');
 
   // =========================================================================
   // 5. TEST BUỔI ĐẤU & XẾP SÂN (PLAY SESSIONS)
