@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { usePickleball } from '../context/PickleballContext';
 import { GameFormat, MatchImportance, SetScore, MatchResult } from '../types/pickleball';
 import { calculateDupr } from '../utils/duprCalculator';
@@ -22,22 +22,52 @@ export const DuprCalculator: React.FC = () => {
   const [targetScore] = useState<11 | 15 | 21>(11);
 
   // Team 1 players
-  const [t1p1Name, setT1p1Name] = useState<string>('Minh Quân');
-  const [t1p1Rating, setT1p1Rating] = useState<number>(5.125);
-  const [t1p1Matches, setT1p1Matches] = useState<number>(42);
+  const [t1p1Name, setT1p1Name] = useState<string>(() => players[0]?.name || 'VĐV 1');
+  const [t1p1Rating, setT1p1Rating] = useState<number>(() => players[0]?.doublesRating || 3.5);
+  const [t1p1Matches, setT1p1Matches] = useState<number>(() => players[0]?.matchesPlayedDoubles || 0);
 
-  const [t1p2Name, setT1p2Name] = useState<string>('Thu Hương');
-  const [t1p2Rating, setT1p2Rating] = useState<number>(4.310);
-  const [t1p2Matches, setT1p2Matches] = useState<number>(31);
+  const [t1p2Name, setT1p2Name] = useState<string>(() => players[1]?.name || 'VĐV 2');
+  const [t1p2Rating, setT1p2Rating] = useState<number>(() => players[1]?.doublesRating || 3.5);
+  const [t1p2Matches, setT1p2Matches] = useState<number>(() => players[1]?.matchesPlayedDoubles || 0);
 
   // Team 2 players
-  const [t2p1Name, setT2p1Name] = useState<string>('Hoàng Long');
-  const [t2p1Rating, setT2p1Rating] = useState<number>(4.745);
-  const [t2p1Matches, setT2p1Matches] = useState<number>(38);
+  const [t2p1Name, setT2p1Name] = useState<string>(() => players[2]?.name || 'VĐV 3');
+  const [t2p1Rating, setT2p1Rating] = useState<number>(() => players[2]?.doublesRating || 3.5);
+  const [t2p1Matches, setT2p1Matches] = useState<number>(() => players[2]?.matchesPlayedDoubles || 0);
 
-  const [t2p2Name, setT2p2Name] = useState<string>('Tuấn Anh');
-  const [t2p2Rating, setT2p2Rating] = useState<number>(3.865);
-  const [t2p2Matches, setT2p2Matches] = useState<number>(26);
+  const [t2p2Name, setT2p2Name] = useState<string>(() => players[3]?.name || 'VĐV 4');
+  const [t2p2Rating, setT2p2Rating] = useState<number>(() => players[3]?.doublesRating || 3.5);
+  const [t2p2Matches, setT2p2Matches] = useState<number>(() => players[3]?.matchesPlayedDoubles || 0);
+
+  // Auto-populate with real club players when players become available
+  useEffect(() => {
+    if (players.length >= 1 && (t1p1Name === 'VĐV 1' || t1p1Name === 'Minh Quân')) {
+      const p0 = players[0];
+      if (p0) {
+        setT1p1Name(p0.name);
+        setT1p1Rating(format === 'doubles' ? p0.doublesRating : p0.singlesRating);
+        setT1p1Matches(format === 'doubles' ? p0.matchesPlayedDoubles : p0.matchesPlayedSingles);
+      }
+      const p1 = players[1];
+      if (p1) {
+        setT1p2Name(p1.name);
+        setT1p2Rating(format === 'doubles' ? p1.doublesRating : p1.singlesRating);
+        setT1p2Matches(format === 'doubles' ? p1.matchesPlayedDoubles : p1.matchesPlayedSingles);
+      }
+      const p2 = players[2];
+      if (p2) {
+        setT2p1Name(p2.name);
+        setT2p1Rating(format === 'doubles' ? p2.doublesRating : p2.singlesRating);
+        setT2p1Matches(format === 'doubles' ? p2.matchesPlayedDoubles : p2.matchesPlayedSingles);
+      }
+      const p3 = players[3];
+      if (p3) {
+        setT2p2Name(p3.name);
+        setT2p2Rating(format === 'doubles' ? p3.doublesRating : p3.singlesRating);
+        setT2p2Matches(format === 'doubles' ? p3.matchesPlayedDoubles : p3.matchesPlayedSingles);
+      }
+    }
+  }, [players, format]);
 
   // Scores
   const [set1, setSet1] = useState<SetScore>({ team1: 11, team2: 7 });

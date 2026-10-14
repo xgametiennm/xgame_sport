@@ -509,7 +509,7 @@ export const HomeDashboardDesktop: React.FC<HomeDashboardDesktopProps> = ({
               gap: 6,
             }}
           >
-            <span>Xem Đầy Đủ 10+ Thành Viên Trên Bảng Xếp Hạng</span>
+            <span>Xem Đầy Đủ {players.length} Thành Viên Trên Bảng Xếp Hạng</span>
             <ChevronRight size={16} />
           </button>
         </div>
@@ -554,14 +554,16 @@ export const HomeDashboardDesktop: React.FC<HomeDashboardDesktopProps> = ({
                 Tình Trạng Sân CLB
               </span>
               <span style={{
-                background: '#ecfdf5',
-                color: '#059669',
+                background: liveCourts.length > 0 ? '#fef2f2' : '#ecfdf5',
+                color: liveCourts.length > 0 ? '#dc2626' : '#059669',
                 fontSize: '0.72rem',
                 fontWeight: 800,
                 padding: '3px 8px',
                 borderRadius: 999,
               }}>
-                6/6 Sân Hoạt Động
+                {liveCourts.length > 0 
+                  ? `${liveCourts.length}/${selectedClub.courtsCount || 4} Sân Đang Đấu` 
+                  : `${selectedClub.courtsCount || 4} Sân Hoạt Động`}
               </span>
             </div>
             <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: 14 }}>

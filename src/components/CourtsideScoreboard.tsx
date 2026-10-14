@@ -37,15 +37,21 @@ interface ScoreHistoryItem {
   activeServerId: string;
 }
 
-const COURTS_PRESETS = [
-  { idSuffix: 'court-1', name: 'Sân Số 1 (Center Court)' },
-  { idSuffix: 'court-2', name: 'Sân Số 2' },
-  { idSuffix: 'court-3', name: 'Sân Số 3' },
-  { idSuffix: 'court-4', name: 'Sân Số 4' },
-];
-
 export const CourtsideScoreboard: React.FC = () => {
   const { lang, setActiveTab, selectedClub, players, myPlayer } = usePickleball();
+
+  // Dynamically generate courts based on club's actual courtsCount setting
+  const courtsPresets = useMemo(() => {
+    const count = Math.max(1, selectedClub.courtsCount || 4);
+    const list = [];
+    for (let i = 1; i <= count; i++) {
+      list.push({
+        idSuffix: `court-${i}`,
+        name: i === 1 ? 'Sân Số 1 (Center Court)' : `Sân Số ${i}`,
+      });
+    }
+    return list;
+  }, [selectedClub.courtsCount]);
 
   // Read URL query params on mount for direct share links (?court=...&mode=spectator)
   const initialParams = useMemo(() => {
@@ -112,6 +118,17 @@ export const CourtsideScoreboard: React.FC = () => {
   // In side-out doubles, first service begins as server 2 (rule 0-0-2)
   const [serverNumber, setServerNumber] = useState<1 | 2>(2);
   const [activeServerId, setActiveServerId] = useState<string>(defaultPlayers[0].id);
+
+  // Auto-sync real club players when loaded from server
+  useEffect(() => {
+    if (players.length >= 4 && (t1Right.id === 'p1' || !t1Right.id)) {
+      setT1Right(defaultPlayers[0]);
+      setT1Left(defaultPlayers[1]);
+      setT2Right(defaultPlayers[2]);
+      setT2Left(defaultPlayers[3]);
+      setActiveServerId(defaultPlayers[0].id);
+    }
+  }, [players, defaultPlayers]);
 
   // Undo history stack
   const [history, setHistory] = useState<ScoreHistoryItem[]>([]);
@@ -668,7 +685,7 @@ export const CourtsideScoreboard: React.FC = () => {
               onChange={(e) => {
                 const newId = e.target.value;
                 setCourtId(newId);
-                const preset = COURTS_PRESETS.find(p => `${selectedClub.id}-${p.idSuffix}` === newId);
+                const preset = courtsPresets.find(p => `${selectedClub.id}-${p.idSuffix}` === newId);
                 if (preset) setCourtName(preset.name);
               }}
               style={{
@@ -682,7 +699,7 @@ export const CourtsideScoreboard: React.FC = () => {
                 cursor: 'pointer',
               }}
             >
-              {COURTS_PRESETS.map((c) => {
+              {courtsPresets.map((c) => {
                 const fullId = `${selectedClub.id}-${c.idSuffix}`;
                 const live = activeCourtsList.find(a => a.id === fullId);
                 const liveLabel = live ? ` (${live.score1}-${live.score2}) 🔴` : '';
