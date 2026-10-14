@@ -1091,20 +1091,45 @@ export const CourtsideScoreboard: React.FC = () => {
                   </span>
 
                   {liveMatch ? (
-                    <span style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      background: '#e11d48',
-                      color: '#ffffff',
-                      padding: '2px 7px',
-                      borderRadius: 999,
-                      fontSize: '0.66rem',
-                      fontWeight: 900,
-                    }}>
-                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ffffff', animation: 'liveBlink 1.2s infinite ease-in-out' }} />
-                      LIVE
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {/* Warning badge if idle >= 20 minutes */}
+                      {(() => {
+                        const idleMins = liveMatch.updatedAt 
+                          ? Math.floor((Date.now() - new Date(liveMatch.updatedAt).getTime()) / 60000) 
+                          : 0;
+                        if (idleMins >= 20) {
+                          return (
+                            <span style={{
+                              background: '#fef3c7',
+                              color: '#b45309',
+                              border: '1px solid #fde68a',
+                              padding: '1px 6px',
+                              borderRadius: 999,
+                              fontSize: '0.62rem',
+                              fontWeight: 800,
+                            }} title={`Không có thao tác nào trong ${idleMins} phút qua. Sẽ tự động giải phóng khi quá hạn.`}>
+                              ⚠️ Treo {idleMins}p
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
+
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        background: '#e11d48',
+                        color: '#ffffff',
+                        padding: '2px 7px',
+                        borderRadius: 999,
+                        fontSize: '0.66rem',
+                        fontWeight: 900,
+                      }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ffffff', animation: 'liveBlink 1.2s infinite ease-in-out' }} />
+                        LIVE
+                      </span>
+                    </div>
                   ) : (
                     <span style={{
                       background: isSpectator ? '#334155' : '#e2e8f0',
@@ -1147,11 +1172,19 @@ export const CourtsideScoreboard: React.FC = () => {
                     }}>
                       {liveMatch.t1Right?.name?.split(' ').slice(-1) || 'Đ1'}/{liveMatch.t1Left?.name?.split(' ').slice(-1) || 'Đ1'} vs {liveMatch.t2Right?.name?.split(' ').slice(-1) || 'Đ2'}/{liveMatch.t2Left?.name?.split(' ').slice(-1) || 'Đ2'}
                     </div>
-                    {liveMatch.scorerName && (
-                      <div style={{ fontSize: '0.68rem', color: isSpectator ? '#64748b' : '#94a3b8', marginTop: 1 }}>
-                        Trọng tài: {liveMatch.scorerName}
-                      </div>
-                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 2, fontSize: '0.68rem', color: isSpectator ? '#94a3b8' : '#64748b' }}>
+                      <span>Trọng tài: {liveMatch.scorerName || 'Trọng tài'}</span>
+                      {liveMatch.updatedAt && (
+                        <span style={{ fontSize: '0.64rem', color: isSpectator ? '#64748b' : '#94a3b8' }}>
+                          {(() => {
+                            const diffM = Math.floor((Date.now() - new Date(liveMatch.updatedAt).getTime()) / 60000);
+                            if (diffM < 1) return 'Vừa xong';
+                            if (diffM < 60) return `${diffM}p trước`;
+                            return `${Math.floor(diffM / 60)}h trước`;
+                          })()}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div>
