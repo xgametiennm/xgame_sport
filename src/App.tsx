@@ -17,6 +17,7 @@ import { CreateClubModal, JoinClubModal } from './components/CreateClubModal';
 import { PlayerProfileView } from './components/PlayerProfileView';
 import { PlayMobile } from './components/PlayMobile';
 import { ClubSettingsMobile } from './components/ClubSettingsMobile';
+import { TournamentGenerator } from './components/TournamentGenerator';
 
 const MainContent: React.FC = () => {
   const { activeTab, setActiveTab, lang, viewMode, myPlayer } = usePickleball();
@@ -90,6 +91,7 @@ const MainContent: React.FC = () => {
                 onSelectPlayer={(p) => setSelectedPlayerForDetail(p)}
               />
             )}
+            {activeTab === 'tournament' && <TournamentGenerator />}
             {activeTab === 'calculator' && <DuprCalculator />}
             {activeTab === 'scoreboard' && <CourtsideScoreboard />}
             {activeTab === 'play' && <PlayMobile />}

@@ -242,6 +242,45 @@ async function deleteSession(req, res) {
   }
 }
 
+// Club's tournament state (setup, draw, group stage & knockout bracket)
+async function getTournament(req, res) {
+  try {
+    const result = await db.query('SELECT data FROM tournaments WHERE club_id = $1', [req.params.id]);
+    res.json({ success: true, data: result.rows[0] ? result.rows[0].data : null });
+  } catch (err) {
+    console.error('getTournament error:', err);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function saveTournament(req, res) {
+  try {
+    const tournament = req.body;
+    if (!tournament) {
+      return res.status(400).json({ success: false, error: 'Dữ liệu giải đấu không hợp lệ' });
+    }
+    await db.query(`
+      INSERT INTO tournaments (club_id, data, updated_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (club_id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
+    `, [req.params.id, JSON.stringify(tournament)]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('saveTournament error:', err);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+async function deleteTournament(req, res) {
+  try {
+    await db.query('DELETE FROM tournaments WHERE club_id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('deleteTournament error:', err);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
 module.exports = {
   getClubs,
   createClub,
@@ -251,4 +290,7 @@ module.exports = {
   getSession,
   saveSession,
   deleteSession,
+  getTournament,
+  saveTournament,
+  deleteTournament,
 };

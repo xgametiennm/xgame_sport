@@ -1,4 +1,4 @@
-import { ClubInfo, ClubRole, Player, MatchResult, UserAccount, LiveCourtState } from '../types/pickleball';
+import { ClubInfo, ClubRole, Player, MatchResult, UserAccount, LiveCourtState, TournamentData } from '../types/pickleball';
 import { PlaySession } from '../utils/playSession';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -75,6 +75,19 @@ class ApiService {
 
   async deleteSession(clubId: string): Promise<void> {
     await this.request(`/clubs/${encodeURIComponent(clubId)}/session`, 'DELETE');
+  }
+
+  // Club tournament (Group stage & Knockout bracket)
+  async getTournament(clubId: string): Promise<TournamentData | null> {
+    return (await this.request(`/clubs/${encodeURIComponent(clubId)}/tournament`)).data;
+  }
+
+  async saveTournament(clubId: string, tournament: TournamentData): Promise<void> {
+    await this.request(`/clubs/${encodeURIComponent(clubId)}/tournament`, 'PUT', tournament);
+  }
+
+  async deleteTournament(clubId: string): Promise<void> {
+    await this.request(`/clubs/${encodeURIComponent(clubId)}/tournament`, 'DELETE');
   }
 
   // Players

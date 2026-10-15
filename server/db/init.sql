@@ -121,6 +121,15 @@ CREATE TABLE IF NOT EXISTS live_courts (
 CREATE INDEX IF NOT EXISTS idx_live_courts_club ON live_courts(club_id);
 
 -- ------------------------------------------------------------------------------
+-- 7. TOURNAMENTS TABLE (Club tournaments, groups, brackets, draw & matches)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS tournaments (
+    club_id VARCHAR(64) PRIMARY KEY REFERENCES clubs(id) ON DELETE CASCADE,
+    data JSONB NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ------------------------------------------------------------------------------
 -- INDEXES
 -- ------------------------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_players_club_id ON players(club_id);

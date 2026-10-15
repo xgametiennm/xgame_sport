@@ -45,6 +45,12 @@ router.get('/clubs/:id/session', memberOf(clubInPath), clubController.getSession
 router.put('/clubs/:id/session', memberOf(clubInPath), clubController.saveSession);
 router.delete('/clubs/:id/session', memberOf(clubInPath), clubController.deleteSession);
 
+// Tournament of a club (Group stage, Knockout bracket, Pairing, Random spin)
+router.get('/clubs/:id/tournament', memberOf(clubInPath), clubController.getTournament);
+router.put('/clubs/:id/tournament', memberOf(clubInPath), clubController.saveTournament);
+router.delete('/clubs/:id/tournament', memberOf(clubInPath), clubController.deleteTournament);
+
+
 // Members
 router.get('/players', memberOf((req) => req.query.clubId), playerController.getPlayers);
 router.post('/players', managerOf((req) => req.body.clubId), playerController.createPlayer);

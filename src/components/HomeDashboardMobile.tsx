@@ -386,6 +386,36 @@ export const HomeDashboardMobile: React.FC<HomeDashboardMobileProps> = ({ onSele
         </div>
       </MobileCard>
 
+      {/* 2.5 QUICK ACCESS TO TOURNAMENT */}
+      <MobileCard
+        onClick={() => setActiveTab('tournament')}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '12px 14px',
+          marginBottom: 18,
+          background: 'linear-gradient(135deg, #064e3b 0%, #047857 100%)',
+          color: '#ffffff',
+          borderRadius: 16,
+          cursor: 'pointer',
+          boxShadow: '0 4px 14px rgba(4, 120, 87, 0.25)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: '1.6rem' }}>🏆</span>
+          <div>
+            <div style={{ fontSize: '0.88rem', fontWeight: 900, color: '#ffffff' }}>
+              Giải Đấu CLB & Bốc Thăm Random
+            </div>
+            <div style={{ fontSize: '0.7rem', color: '#a7f3d0' }}>
+              Vòng bảng, nhánh đấu loại trực tiếp & quay số ngẫu nhiên
+            </div>
+          </div>
+        </div>
+        <ChevronRight size={18} color="#bef264" />
+      </MobileCard>
+
       {/* 3. SEASON AWARDS */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <h2 style={{ fontSize: '1.05rem', fontWeight: 900, color: '#0f172a' }}>Danh hiệu mùa giải</h2>

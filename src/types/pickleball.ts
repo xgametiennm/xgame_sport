@@ -171,3 +171,72 @@ export interface LiveCourtState {
   updatedAt: string;
 }
 
+export type TournamentFormat = 'doubles' | 'singles';
+export type TournamentType = 'group_and_knockout' | 'knockout_only' | 'group_only';
+export type PairingMethod = 'random' | 'balanced' | 'manual';
+
+export interface TournamentTeam {
+  id: string;
+  name: string;
+  player1: Player;
+  player2?: Player;
+  seed?: number;
+  groupName?: string;
+}
+
+export interface TournamentMatch {
+  id: string;
+  stage: 'group' | 'knockout';
+  groupName?: string;
+  roundIndex: number;
+  matchIndex: number;
+  roundName: string;
+  title?: string;
+  team1?: TournamentTeam | null;
+  team2?: TournamentTeam | null;
+  score1?: number;
+  score2?: number;
+  winner?: 1 | 2 | null;
+  nextMatchId?: string;
+  nextMatchSlot?: 1 | 2;
+  courtName?: string;
+  completed: boolean;
+}
+
+export interface GroupStanding {
+  team: TournamentTeam;
+  played: number;
+  won: number;
+  lost: number;
+  pointsFor: number;
+  pointsAgainst: number;
+  diff: number;
+  rank: number;
+  points: number;
+}
+
+export interface TournamentData {
+  id: string;
+  clubId: string;
+  name: string;
+  format: TournamentFormat;
+  type: TournamentType;
+  pairingMethod: PairingMethod;
+  teams: TournamentTeam[];
+  groups: {
+    name: string;
+    teamIds: string[];
+  }[];
+  groupMatches: TournamentMatch[];
+  knockoutMatches: TournamentMatch[];
+  targetScore: number;
+  currentPhase: 'setup' | 'pairing' | 'drawing' | 'group_stage' | 'knockout_stage' | 'finished';
+  advancePerGroup: number;
+  champion?: TournamentTeam | null;
+  runnerUp?: TournamentTeam | null;
+  thirdPlace?: TournamentTeam | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+

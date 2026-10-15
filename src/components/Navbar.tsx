@@ -16,7 +16,8 @@ import {
   Plus,
   Settings,
   Pencil,
-  Star
+  Star,
+  Medal
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -75,6 +76,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenProfile, onCreateClub, onJ
       labelVi: 'Lịch Sử Đấu',
       labelEn: 'Matches',
       icon: <History size={18} />,
+    },
+    {
+      tab: 'tournament',
+      labelVi: 'Thi Đấu',
+      labelEn: 'Tournament',
+      icon: <Medal size={18} />,
     },
     {
       tab: 'play',

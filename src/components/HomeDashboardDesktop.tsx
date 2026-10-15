@@ -552,6 +552,52 @@ export const HomeDashboardDesktop: React.FC<HomeDashboardDesktopProps> = ({
             </button>
           </div>
 
+          {/* Giải Đấu CLB Widget */}
+          <div className="card" style={{ padding: 20, borderRadius: 20, border: '1.5px solid #bef264', background: 'linear-gradient(135deg, #064030, #047857)', color: '#ffffff' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '1.3rem' }}>🏆</span>
+                <span style={{ fontWeight: 900, fontSize: '0.98rem', color: '#ffffff' }}>
+                  Giải Đấu CLB & Bốc Thăm
+                </span>
+              </div>
+              <span style={{
+                background: '#bef264',
+                color: '#064030',
+                fontSize: '0.72rem',
+                fontWeight: 900,
+                padding: '2px 8px',
+                borderRadius: 999,
+              }}>
+                MỚI
+              </span>
+            </div>
+            <div style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.85)', marginBottom: 14, lineHeight: 1.4 }}>
+              Tính năng thi đấu chuyên nghiệp: quay random bốc thăm cặp đấu, vòng bảng tính điểm và nhánh cây loại trực tiếp (Knockout).
+            </div>
+            <button
+              onClick={() => setActiveTab('tournament')}
+              style={{
+                width: '100%',
+                padding: '10px',
+                borderRadius: 12,
+                border: 'none',
+                background: '#bef264',
+                color: '#064030',
+                fontWeight: 900,
+                fontSize: '0.88rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+              }}
+            >
+              <span>Vào Khu Vực Thi Đấu</span>
+              <ChevronRight size={16} />
+            </button>
+          </div>
+
           {/* Sân Đấu Trực Tiếp Widget */}
           <div className="card" style={{ padding: 20, borderRadius: 20 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
