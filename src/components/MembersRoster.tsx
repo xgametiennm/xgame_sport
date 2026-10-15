@@ -76,7 +76,7 @@ export const MembersRoster: React.FC<MembersRosterProps> = ({ onSelectPlayer }) 
         <div style={{ position: 'relative', flex: 1 }}>
           <input
             type="text"
-            placeholder="🔍 Tìm thành viên theo tên..."
+            placeholder="Tìm thành viên theo tên..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="input-dark"

@@ -205,7 +205,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, required 
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={required ? undefined : onClose}>
       <div 
         className="modal-content" 
         onClick={(e) => e.stopPropagation()} 

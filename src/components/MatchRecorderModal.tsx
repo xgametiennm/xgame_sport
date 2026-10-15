@@ -136,11 +136,12 @@ export const MatchRecorderModal: React.FC<MatchRecorderModalProps> = ({ isOpen, 
           {/* Team 1 selection */}
           <div style={{ background: '#ecfdf5', padding: 12, borderRadius: 12, border: '1px solid #a7f3d0' }}>
             <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#059669', marginBottom: 8 }}>ĐỘI 1</div>
-            <div style={{ display: 'grid', gridTemplateColumns: format === 'doubles' ? '1fr 1fr' : '1fr', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: format === 'doubles' ? 'repeat(auto-fit, minmax(140px, 1fr))' : '1fr', gap: 8 }}>
               <select
                 value={t1p1Id}
                 onChange={(e) => setT1p1Id(e.target.value)}
                 className="input-dark"
+                style={{ minWidth: 0 }}
                 required
               >
                 {players.map((p) => (
@@ -153,6 +154,7 @@ export const MatchRecorderModal: React.FC<MatchRecorderModalProps> = ({ isOpen, 
                   value={t1p2Id}
                   onChange={(e) => setT1p2Id(e.target.value)}
                   className="input-dark"
+                  style={{ minWidth: 0 }}
                   required
                 >
                   {players.map((p) => (
@@ -166,11 +168,12 @@ export const MatchRecorderModal: React.FC<MatchRecorderModalProps> = ({ isOpen, 
           {/* Team 2 selection */}
           <div style={{ background: '#f0f9ff', padding: 12, borderRadius: 12, border: '1px solid #bae6fd' }}>
             <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0284c7', marginBottom: 8 }}>ĐỘI 2</div>
-            <div style={{ display: 'grid', gridTemplateColumns: format === 'doubles' ? '1fr 1fr' : '1fr', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: format === 'doubles' ? 'repeat(auto-fit, minmax(140px, 1fr))' : '1fr', gap: 8 }}>
               <select
                 value={t2p1Id}
                 onChange={(e) => setT2p1Id(e.target.value)}
                 className="input-dark"
+                style={{ minWidth: 0 }}
                 required
               >
                 {players.map((p) => (
@@ -183,6 +186,7 @@ export const MatchRecorderModal: React.FC<MatchRecorderModalProps> = ({ isOpen, 
                   value={t2p2Id}
                   onChange={(e) => setT2p2Id(e.target.value)}
                   className="input-dark"
+                  style={{ minWidth: 0 }}
                   required
                 >
                   {players.map((p) => (

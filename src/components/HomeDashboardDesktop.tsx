@@ -268,7 +268,7 @@ export const HomeDashboardDesktop: React.FC<HomeDashboardDesktopProps> = ({
           </button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
           {/* Card 1: CHIẾN THẦN RA SÂN */}
           <div className="card card-interactive" style={{ padding: '24px 20px', borderRadius: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -389,7 +389,7 @@ export const HomeDashboardDesktop: React.FC<HomeDashboardDesktopProps> = ({
       </div>
 
       {/* 3. TWO COLUMNS: QUICK LEADERBOARD & RECENT MATCHES */}
-      <div style={{ display: 'grid', gridTemplateColumns: '65% 35%', gap: 24, alignItems: 'start' }}>
+      <div className="dashboard-main-grid">
         {/* Left Column: Quick Standings */}
         <div className="card" style={{ padding: '20px 24px', borderRadius: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
@@ -541,9 +541,14 @@ export const HomeDashboardDesktop: React.FC<HomeDashboardDesktopProps> = ({
                 fontWeight: 900,
                 fontSize: '0.92rem',
                 cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
               }}
             >
-              + Nhập Điểm Trận Đấu
+              <Plus size={18} strokeWidth={2.5} />
+              <span>Nhập Điểm Trận Đấu</span>
             </button>
           </div>
 

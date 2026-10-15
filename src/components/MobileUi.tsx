@@ -299,5 +299,11 @@ export const LeaderboardTable: React.FC<{
         </div>
       );
     })}
+
+    {players.length === 0 && (
+      <div style={{ textAlign: 'center', padding: '24px 12px', color: '#94a3b8', fontSize: '0.85rem' }}>
+        Chưa có thành viên nào phù hợp
+      </div>
+    )}
   </MobileCard>
 );

@@ -107,7 +107,7 @@ export const ClubStandingsDesktop: React.FC<ClubStandingsDesktopProps> = ({
       {/* 2. PODIUM TOP 3 SHOWCASE (Desktop 3-Column Grid) */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
         gap: 20,
         marginBottom: 28,
       }}>

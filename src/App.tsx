@@ -95,12 +95,31 @@ const MainContent: React.FC = () => {
             {activeTab === 'play' && <PlayMobile />}
             {activeTab === 'clubSettings' && <ClubSettingsMobile />}
             {/* Always the signed-in account's own record, never another member's */}
-            {activeTab === 'profile' && myPlayer && (
-              <PlayerProfileView
-                player={myPlayer}
-                onEditProfile={() => setIsProfileOpen(true)}
-                onSelectPlayer={(p) => setSelectedPlayerForDetail(p)}
-              />
+            {activeTab === 'profile' && (
+              myPlayer ? (
+                <PlayerProfileView
+                  player={myPlayer}
+                  onEditProfile={() => setIsProfileOpen(true)}
+                  onSelectPlayer={(p) => setSelectedPlayerForDetail(p)}
+                />
+              ) : (
+                <div style={{ textAlign: 'center', padding: '60px 20px', color: '#64748b' }}>
+                  <div style={{ fontSize: '2.4rem', marginBottom: 12 }}>👤</div>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0f172a', marginBottom: 8 }}>
+                    Chưa chọn hồ sơ cá nhân
+                  </div>
+                  <div style={{ fontSize: '0.88rem', color: '#64748b', marginBottom: 20, maxWidth: 360, margin: '0 auto 20px' }}>
+                    Vui lòng chỉnh sửa thông tin hồ sơ hoặc liên kết tài khoản để xem thống kê DUPR của bạn.
+                  </div>
+                  <button
+                    onClick={() => setIsProfileOpen(true)}
+                    className="btn-primary"
+                    style={{ padding: '10px 24px', borderRadius: 999 }}
+                  >
+                    Mở Cài Đặt Hồ Sơ
+                  </button>
+                </div>
+              )
             )}
           </>
         )}
