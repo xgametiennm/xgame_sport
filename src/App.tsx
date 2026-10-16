@@ -6,7 +6,6 @@ import { Navbar } from './components/Navbar';
 import { HomeDashboard } from './components/HomeDashboard';
 import { MembersRoster } from './components/MembersRoster';
 import { ClubStandings } from './components/ClubStandings';
-import { DuprCalculator } from './components/DuprCalculator';
 import { CourtsideScoreboard } from './components/CourtsideScoreboard';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { AuthModal } from './components/AuthModal';
@@ -79,10 +78,11 @@ const MainContent: React.FC = () => {
                 onSelectPlayer={(p) => setSelectedPlayerForDetail(p)}
               />
             )}
-            {activeTab === 'standings' && (
+            {(activeTab === 'standings' || activeTab === 'calculator') && (
               <ClubStandings 
                 onOpenRecordMatch={() => setIsRecordOpen(true)} 
                 onSelectPlayer={(p) => setSelectedPlayerForDetail(p)}
+                initialSubTab={activeTab === 'calculator' ? 'calculator' : 'standings'}
               />
             )}
             {activeTab === 'matches' && (
@@ -92,7 +92,6 @@ const MainContent: React.FC = () => {
               />
             )}
             {activeTab === 'tournament' && <TournamentGenerator />}
-            {activeTab === 'calculator' && <DuprCalculator />}
             {activeTab === 'scoreboard' && <CourtsideScoreboard />}
             {activeTab === 'play' && <PlayMobile />}
             {activeTab === 'clubSettings' && <ClubSettingsMobile />}

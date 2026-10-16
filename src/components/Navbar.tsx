@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import { 
   Home,
   Trophy,
-  Calculator, 
   Activity, 
   LogOut, 
   User, 
@@ -17,7 +16,9 @@ import {
   Settings,
   Pencil,
   Star,
-  Medal
+  Medal,
+  Bell,
+  CheckCheck
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -27,26 +28,46 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ onOpenProfile, onCreateClub, onJoinClub }) => {
-  const { activeTab, setActiveTab, lang, setLang, clubs, selectedClub, setSelectedClub, defaultClubId, setDefaultClub, myPlayer } = usePickleball();
+  const { 
+    activeTab, 
+    setActiveTab, 
+    lang, 
+    setLang, 
+    clubs, 
+    selectedClub, 
+    setSelectedClub, 
+    defaultClubId, 
+    setDefaultClub, 
+    myPlayer,
+    notifications,
+    unreadNotificationsCount,
+    markNotificationRead,
+    markAllNotificationsRead,
+    confirmMatch,
+  } = usePickleball();
   const { currentUser, logout } = useAuth();
   const [showClubDropdown, setShowClubDropdown] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [showNotificationDropdown, setShowNotificationDropdown] = useState(false);
   const clubDropdownRef = useRef<HTMLDivElement>(null);
   const userDropdownRef = useRef<HTMLDivElement>(null);
+  const notificationDropdownRef = useRef<HTMLDivElement>(null);
 
   // Close an open dropdown on a click outside it or on Escape
   useEffect(() => {
-    if (!showClubDropdown && !showUserDropdown) return;
+    if (!showClubDropdown && !showUserDropdown && !showNotificationDropdown) return;
 
     const handlePointerDown = (e: MouseEvent) => {
       const target = e.target as Node;
       if (!clubDropdownRef.current?.contains(target)) setShowClubDropdown(false);
       if (!userDropdownRef.current?.contains(target)) setShowUserDropdown(false);
+      if (!notificationDropdownRef.current?.contains(target)) setShowNotificationDropdown(false);
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setShowClubDropdown(false);
         setShowUserDropdown(false);
+        setShowNotificationDropdown(false);
       }
     };
 
@@ -56,7 +77,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenProfile, onCreateClub, onJ
       document.removeEventListener('mousedown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [showClubDropdown, showUserDropdown]);
+  }, [showClubDropdown, showUserDropdown, showNotificationDropdown]);
 
   const navItems: { tab: AppTab; labelVi: string; labelEn: string; icon: React.ReactNode }[] = [
     {
@@ -88,12 +109,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenProfile, onCreateClub, onJ
       labelVi: 'Chơi',
       labelEn: 'Play',
       icon: <Play size={18} />,
-    },
-    {
-      tab: 'calculator',
-      labelVi: 'Tính Điểm DUPR',
-      labelEn: 'DUPR Calculator',
-      icon: <Calculator size={18} />,
     },
     {
       tab: 'scoreboard',
@@ -369,8 +384,247 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenProfile, onCreateClub, onJ
           </div>
         </div>
 
-        {/* Right Actions: Lang toggle & User Auth */}
+        {/* Right Actions: Notifications, Lang toggle & User Auth */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+
+          {/* Notification Bell */}
+          {currentUser && (
+            <div ref={notificationDropdownRef} style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowNotificationDropdown(!showNotificationDropdown)}
+                title="Thông báo"
+                style={{
+                  position: 'relative',
+                  width: 36,
+                  height: 36,
+                  borderRadius: '50%',
+                  background: showNotificationDropdown ? '#ecfdf5' : '#f8fafc',
+                  border: showNotificationDropdown ? '1.5px solid #059669' : '1px solid #cbd5e1',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: showNotificationDropdown ? '#059669' : '#475569',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <Bell size={18} />
+                {unreadNotificationsCount > 0 && (
+                  <span style={{
+                    position: 'absolute',
+                    top: -3,
+                    right: -3,
+                    minWidth: 18,
+                    height: 18,
+                    borderRadius: 999,
+                    background: '#ef4444',
+                    color: '#ffffff',
+                    fontSize: '0.65rem',
+                    fontWeight: 900,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 4px',
+                    boxShadow: '0 2px 4px rgba(239, 68, 68, 0.4)',
+                    border: '2px solid #ffffff',
+                  }}>
+                    {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
+                  </span>
+                )}
+              </button>
+
+              {showNotificationDropdown && (
+                <div style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 10px)',
+                  right: -40,
+                  width: 360,
+                  maxWidth: '92vw',
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: 18,
+                  boxShadow: '0 10px 30px rgba(0,0,0,0.14)',
+                  zIndex: 300,
+                  overflow: 'hidden',
+                }}>
+                  {/* Header */}
+                  <div style={{
+                    padding: '14px 18px',
+                    background: '#f8fafc',
+                    borderBottom: '1px solid #f1f5f9',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: '0.92rem', fontWeight: 900, color: '#0f172a' }}>
+                        Thông Báo
+                      </span>
+                      {unreadNotificationsCount > 0 && (
+                        <span style={{
+                          fontSize: '0.7rem',
+                          fontWeight: 800,
+                          background: '#fee2e2',
+                          color: '#ef4444',
+                          padding: '2px 8px',
+                          borderRadius: 999,
+                        }}>
+                          {unreadNotificationsCount} mới
+                        </span>
+                      )}
+                    </div>
+                    {unreadNotificationsCount > 0 && (
+                      <button
+                        onClick={() => markAllNotificationsRead()}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#059669',
+                          fontSize: '0.74rem',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                      >
+                        <CheckCheck size={13} />
+                        Đã đọc tất cả
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Notification List */}
+                  <div style={{ maxHeight: 380, overflowY: 'auto' }}>
+                    {notifications.length === 0 ? (
+                      <div style={{ padding: '36px 20px', textAlign: 'center', color: '#94a3b8' }}>
+                        <div style={{ fontSize: '2rem', marginBottom: 8 }}>🔕</div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#64748b' }}>
+                          Chưa có thông báo nào
+                        </div>
+                        <div style={{ fontSize: '0.75rem', marginTop: 4 }}>
+                          Khi có kết quả trận đấu mới liên quan đến bạn, thông báo sẽ hiển thị tại đây.
+                        </div>
+                      </div>
+                    ) : (
+                      notifications.map((n) => {
+                        const isMatch = n.type === 'match_result';
+                        const isAppeal = n.type === 'match_appeal';
+                        return (
+                          <div
+                            key={n.id}
+                            onClick={() => {
+                              if (!n.read) markNotificationRead(n.id);
+                            }}
+                            style={{
+                              padding: '12px 16px',
+                              borderBottom: '1px solid #f1f5f9',
+                              background: n.read ? '#ffffff' : '#f0fdf4',
+                              transition: 'background 0.15s ease',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                              <div style={{
+                                width: 32,
+                                height: 32,
+                                borderRadius: 10,
+                                background: isAppeal ? '#fef2f2' : isMatch ? '#ecfdf5' : '#eff6ff',
+                                color: isAppeal ? '#ef4444' : isMatch ? '#059669' : '#2563eb',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '1rem',
+                                flexShrink: 0,
+                              }}>
+                                {isAppeal ? '⚠️' : isMatch ? '🏓' : 'ℹ️'}
+                              </div>
+
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginBottom: 2 }}>
+                                  <div style={{
+                                    fontSize: '0.82rem',
+                                    fontWeight: 800,
+                                    color: '#0f172a',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                  }}>
+                                    {n.title}
+                                  </div>
+                                  {!n.read && (
+                                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#059669', flexShrink: 0 }} />
+                                  )}
+                                </div>
+
+                                <div style={{ fontSize: '0.76rem', color: '#475569', lineHeight: 1.4, marginBottom: 6 }}>
+                                  {n.message}
+                                </div>
+
+                                {/* Quick action buttons if match notification */}
+                                {isMatch && n.data?.matchId && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                                    <button
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        await confirmMatch(n.data!.matchId!);
+                                        markNotificationRead(n.id);
+                                      }}
+                                      style={{
+                                        padding: '4px 10px',
+                                        borderRadius: 6,
+                                        background: '#059669',
+                                        color: '#ffffff',
+                                        border: 'none',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                      }}
+                                    >
+                                      ✓ Xác nhận
+                                    </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        markNotificationRead(n.id);
+                                        setShowNotificationDropdown(false);
+                                        setActiveTab('matches');
+                                      }}
+                                      style={{
+                                        padding: '4px 10px',
+                                        borderRadius: 6,
+                                        background: '#ffffff',
+                                        color: '#475569',
+                                        border: '1px solid #cbd5e1',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                      }}
+                                    >
+                                      Chi tiết / Kháng cáo
+                                    </button>
+                                  </div>
+                                )}
+
+                                <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: 4 }}>
+                                  {new Date(n.createdAt).toLocaleDateString('vi-VN', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Language Toggle */}
           <button

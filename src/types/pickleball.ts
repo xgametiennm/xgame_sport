@@ -69,6 +69,41 @@ export interface MatchResult {
   updatedByName?: string;
   updatedAt?: string;
   updatedByRole?: string;
+  confirmedPlayerIds?: string[];
+  appeals?: MatchAppeal[];
+}
+
+export interface MatchAppeal {
+  playerId: string;
+  playerName: string;
+  reason: string;
+  createdAt: string;
+}
+
+export interface AppNotification {
+  id: string;
+  userId: string;
+  clubId?: string;
+  clubName?: string;
+  type: 'match_result' | 'match_appeal' | 'general';
+  title: string;
+  message: string;
+  data?: {
+    matchId?: string;
+    clubId?: string;
+    score1?: number;
+    score2?: number;
+    team1Names?: string;
+    team2Names?: string;
+    courtName?: string;
+    format?: string;
+    date?: string;
+    playerId?: string;
+    playerName?: string;
+    reason?: string;
+  };
+  read: boolean;
+  createdAt: string;
 }
 
 export interface DuprCalcInput {

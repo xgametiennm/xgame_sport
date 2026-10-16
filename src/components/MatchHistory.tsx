@@ -14,9 +14,14 @@ import {
   Zap,
   Users,
   Edit3,
-  Trash2
+  Trash2,
+  CheckCircle2,
+  AlertTriangle,
+  Clock,
+  ShieldAlert
 } from 'lucide-react';
 import { EditMatchModal } from './EditMatchModal';
+import { MatchConfirmationModal } from './MatchConfirmationModal';
 import { MatchResult } from '../types/pickleball';
 
 interface MatchHistoryProps {
@@ -27,8 +32,9 @@ interface MatchHistoryProps {
 const PAGE_SIZE = 15;
 
 export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, onSelectPlayer }) => {
-  const { matches, selectedClub, isManager, deleteMatch } = usePickleball();
+  const { matches, selectedClub, isManager, deleteMatch, myPlayer, confirmMatch } = usePickleball();
   const [editingMatch, setEditingMatch] = useState<MatchResult | null>(null);
+  const [confirmationModalMatch, setConfirmationModalMatch] = useState<MatchResult | null>(null);
 
   // Filters state
   const [searchQuery, setSearchQuery] = useState('');
@@ -417,6 +423,19 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
             const score1 = match.sets && match.sets.length > 0 ? match.sets[0].team1 : match.totalScoreTeam1;
             const score2 = match.sets && match.sets.length > 0 ? match.sets[0].team2 : match.totalScoreTeam2;
 
+            const team1Players = [match.team1.player1, match.team1.player2].filter((p): p is Player => !!p);
+            const team2Players = [match.team2.player1, match.team2.player2].filter((p): p is Player => !!p);
+            const allParticipants = [...team1Players, ...team2Players];
+            const totalParticipants = allParticipants.length;
+            const confirmedIds = match.confirmedPlayerIds || [];
+            const appeals = match.appeals || [];
+            const confirmedCount = confirmedIds.filter((id) => allParticipants.some((p) => p.id === id)).length;
+            const isFullyConfirmed = totalParticipants > 0 && confirmedCount >= totalParticipants;
+            const hasAppeals = appeals.length > 0;
+            const isMyMatch = myPlayer ? allParticipants.some((p) => p.id === myPlayer.id) : false;
+            const isMyConfirmed = myPlayer ? confirmedIds.includes(myPlayer.id) : false;
+            const myAppeal = myPlayer ? appeals.find((a) => a.playerId === myPlayer.id) : null;
+
             return (
               <div
                 key={match.id}
@@ -473,6 +492,57 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
                         📍 {match.courtName}
                       </span>
                     )}
+
+                    {/* Confirmation Status Badge */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmationModalMatch(match);
+                      }}
+                      title="Nhấp để xem chi tiết xác nhận và khiếu nại của các VĐV"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        padding: '3px 8px',
+                        borderRadius: 6,
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        border: hasAppeals
+                          ? '1px solid #fca5a5'
+                          : isFullyConfirmed
+                          ? '1px solid #a7f3d0'
+                          : '1px solid #fed7aa',
+                        background: hasAppeals
+                          ? '#fef2f2'
+                          : isFullyConfirmed
+                          ? '#ecfdf5'
+                          : '#fff7ed',
+                        color: hasAppeals
+                          ? '#b91c1c'
+                          : isFullyConfirmed
+                          ? '#059669'
+                          : '#c2410c',
+                      }}
+                    >
+                      {hasAppeals ? (
+                        <>
+                          <AlertTriangle size={12} color="#dc2626" />
+                          <span>⚠️ {appeals.length} Kháng cáo ({confirmedCount}/{totalParticipants} xác nhận)</span>
+                        </>
+                      ) : isFullyConfirmed ? (
+                        <>
+                          <CheckCircle2 size={12} color="#059669" />
+                          <span>✓ {confirmedCount}/{totalParticipants} Đã xác nhận</span>
+                        </>
+                      ) : (
+                        <>
+                          <Clock size={12} color="#ea580c" />
+                          <span>⏳ {confirmedCount}/{totalParticipants} Đã xác nhận</span>
+                        </>
+                      )}
+                    </button>
 
                     {/* Last Updated Badge */}
                     {match.updatedByName && (
@@ -616,6 +686,21 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
                           <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>
                             {match.team1.player1?.name || 'VĐV 1'}
                           </span>
+                          {match.team1.player1 && (
+                            confirmedIds.includes(match.team1.player1.id) ? (
+                              <span title="VĐV đã xác nhận kết quả" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                <CheckCircle2 size={13} color="#16a34a" />
+                              </span>
+                            ) : appeals.some((a) => a.playerId === match.team1.player1?.id) ? (
+                              <span title="VĐV đang khiếu nại kết quả" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                <AlertTriangle size={13} color="#dc2626" />
+                              </span>
+                            ) : (
+                              <span title="VĐV chưa xác nhận" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                <Clock size={12} color="#94a3b8" />
+                              </span>
+                            )
+                          )}
                         </div>
 
                         {match.team1.player2 && (
@@ -631,6 +716,19 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
                             <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>
                               {match.team1.player2?.name}
                             </span>
+                            {confirmedIds.includes(match.team1.player2.id) ? (
+                              <span title="VĐV đã xác nhận kết quả" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                <CheckCircle2 size={13} color="#16a34a" />
+                              </span>
+                            ) : appeals.some((a) => a.playerId === match.team1.player2?.id) ? (
+                              <span title="VĐV đang khiếu nại kết quả" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                <AlertTriangle size={13} color="#dc2626" />
+                              </span>
+                            ) : (
+                              <span title="VĐV chưa xác nhận" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                <Clock size={12} color="#94a3b8" />
+                              </span>
+                            )}
                           </div>
                         )}
                       </div>
@@ -699,6 +797,54 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
                     }}>
                       Kết quả 1 Set
                     </span>
+
+                    {/* Centered Confirmation Count Pill */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmationModalMatch(match);
+                      }}
+                      title="Xem danh sách người đã xác nhận và kháng cáo"
+                      style={{
+                        marginTop: 4,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        padding: '3px 10px',
+                        borderRadius: 999,
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        border: hasAppeals
+                          ? '1px solid #fecdd3'
+                          : isFullyConfirmed
+                          ? '1px solid #bbf7d0'
+                          : '1px solid #fed7aa',
+                        background: hasAppeals
+                          ? '#fff1f2'
+                          : isFullyConfirmed
+                          ? '#f0fdf4'
+                          : '#fff7ed',
+                        color: hasAppeals
+                          ? '#be123c'
+                          : isFullyConfirmed
+                          ? '#15803d'
+                          : '#c2410c',
+                        cursor: 'pointer',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                      }}
+                    >
+                      {hasAppeals ? (
+                        <>
+                          <AlertTriangle size={11} color="#e11d48" />
+                          <span>Có {appeals.length} khiếu nại</span>
+                        </>
+                      ) : (
+                        <>
+                          {isFullyConfirmed ? <CheckCircle2 size={11} color="#16a34a" /> : <Clock size={11} color="#d97706" />}
+                          <span>{confirmedCount}/{totalParticipants} xác nhận</span>
+                        </>
+                      )}
+                    </button>
                   </div>
 
                   {/* TEAM 2 */}
@@ -726,6 +872,21 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
                           onClick={() => onSelectPlayer && onSelectPlayer(match.team2.player1)}
                           style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
                         >
+                          {match.team2.player1 && (
+                            confirmedIds.includes(match.team2.player1.id) ? (
+                              <span title="VĐV đã xác nhận kết quả" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                <CheckCircle2 size={13} color="#16a34a" />
+                              </span>
+                            ) : appeals.some((a) => a.playerId === match.team2.player1?.id) ? (
+                              <span title="VĐV đang khiếu nại kết quả" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                <AlertTriangle size={13} color="#dc2626" />
+                              </span>
+                            ) : (
+                              <span title="VĐV chưa xác nhận" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                <Clock size={12} color="#94a3b8" />
+                              </span>
+                            )
+                          )}
                           <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>
                             {match.team2.player1?.name || 'VĐV 3'}
                           </span>
@@ -741,6 +902,19 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
                             onClick={() => onSelectPlayer && onSelectPlayer(match.team2.player2!)}
                             style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
                           >
+                            {confirmedIds.includes(match.team2.player2.id) ? (
+                              <span title="VĐV đã xác nhận kết quả" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                <CheckCircle2 size={13} color="#16a34a" />
+                              </span>
+                            ) : appeals.some((a) => a.playerId === match.team2.player2?.id) ? (
+                              <span title="VĐV đang khiếu nại kết quả" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                <AlertTriangle size={13} color="#dc2626" />
+                              </span>
+                            ) : (
+                              <span title="VĐV chưa xác nhận" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                <Clock size={12} color="#94a3b8" />
+                              </span>
+                            )}
                             <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>
                               {match.team2.player2?.name}
                             </span>
@@ -776,6 +950,138 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
                     </div>
                   </div>
                 </div>
+
+                {/* QUICK CONFIRMATION ACTION BAR FOR PARTICIPANT */}
+                {isMyMatch && (
+                  !isMyConfirmed && !myAppeal ? (
+                    <div style={{
+                      padding: '10px 18px',
+                      background: 'linear-gradient(90deg, #ecfdf5, #f0fdf4)',
+                      borderTop: '1px solid #a7f3d0',
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 10,
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 800, color: '#065f46' }}>
+                        <span>👉 Bạn tham gia trận này. Vui lòng xác nhận tỉ số ({score1} - {score2}):</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            confirmMatch(match.id, myPlayer?.id);
+                          }}
+                          className="btn-primary"
+                          style={{
+                            padding: '6px 14px',
+                            borderRadius: 8,
+                            fontSize: '0.78rem',
+                            fontWeight: 800,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 5,
+                          }}
+                        >
+                          <CheckCircle2 size={14} />
+                          Xác Nhận Tỉ Số
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmationModalMatch(match);
+                          }}
+                          style={{
+                            padding: '6px 14px',
+                            borderRadius: 8,
+                            fontSize: '0.78rem',
+                            fontWeight: 800,
+                            background: '#ffffff',
+                            color: '#dc2626',
+                            border: '1px solid #fca5a5',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 5,
+                          }}
+                        >
+                          <AlertTriangle size={14} />
+                          Kháng Cáo
+                        </button>
+                      </div>
+                    </div>
+                  ) : isMyConfirmed ? (
+                    <div style={{
+                      padding: '8px 18px',
+                      background: '#f8fafc',
+                      borderTop: '1px solid #f1f5f9',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      fontSize: '0.76rem',
+                      color: '#059669',
+                      fontWeight: 700,
+                    }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <CheckCircle2 size={14} color="#059669" />
+                        Bạn đã xác nhận kết quả ({confirmedCount}/{totalParticipants} VĐV đã xác nhận)
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmationModalMatch(match);
+                        }}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#64748b',
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          textDecoration: 'underline',
+                        }}
+                      >
+                        Chi tiết xác nhận
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{
+                      padding: '8px 18px',
+                      background: '#fef2f2',
+                      borderTop: '1px solid #fecaca',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      fontSize: '0.76rem',
+                      color: '#dc2626',
+                      fontWeight: 700,
+                    }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <AlertTriangle size={14} color="#dc2626" />
+                        Bạn đã kháng cáo: "{myAppeal?.reason}"
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmationModalMatch(match);
+                        }}
+                        style={{
+                          padding: '3px 10px',
+                          borderRadius: 6,
+                          background: '#ffffff',
+                          border: '1px solid #fca5a5',
+                          color: '#dc2626',
+                          fontSize: '0.74rem',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Xem / Rút kháng cáo
+                      </button>
+                    </div>
+                  )
+                )}
 
                 {/* EXPANDED METRICS DETAILS (DUPR MATHEMATICAL BREAKDOWN) */}
                 {isExpanded && (
@@ -888,6 +1194,13 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
         isOpen={!!editingMatch}
         match={editingMatch}
         onClose={() => setEditingMatch(null)}
+      />
+
+      {/* Confirmation & Appeal Modal */}
+      <MatchConfirmationModal
+        isOpen={!!confirmationModalMatch}
+        match={confirmationModalMatch}
+        onClose={() => setConfirmationModalMatch(null)}
       />
     </div>
   );

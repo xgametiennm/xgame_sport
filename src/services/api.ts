@@ -1,4 +1,4 @@
-import { ClubInfo, ClubRole, Player, MatchResult, UserAccount, LiveCourtState, TournamentData } from '../types/pickleball';
+import { ClubInfo, ClubRole, Player, MatchResult, UserAccount, LiveCourtState, TournamentData, AppNotification } from '../types/pickleball';
 import { PlaySession } from '../utils/playSession';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -122,6 +122,28 @@ class ApiService {
 
   async deleteMatch(matchId: string): Promise<void> {
     await this.request(`/matches/${encodeURIComponent(matchId)}`, 'DELETE');
+  }
+
+  async confirmMatch(matchId: string, playerId?: string): Promise<MatchResult> {
+    return (await this.request(`/matches/${encodeURIComponent(matchId)}/confirm`, 'POST', { playerId })).data;
+  }
+
+  async appealMatch(matchId: string, reason: string): Promise<MatchResult> {
+    return (await this.request(`/matches/${encodeURIComponent(matchId)}/appeal`, 'POST', { reason })).data;
+  }
+
+  // Notifications
+  async getNotifications(): Promise<{ notifications: AppNotification[]; unreadCount: number }> {
+    const res = await this.request('/notifications');
+    return { notifications: res.data || [], unreadCount: res.unreadCount || 0 };
+  }
+
+  async markNotificationRead(id: string): Promise<void> {
+    await this.request(`/notifications/${encodeURIComponent(id)}/read`, 'PATCH');
+  }
+
+  async markAllNotificationsRead(): Promise<void> {
+    await this.request('/notifications/read-all', 'POST');
   }
 
   // Auth

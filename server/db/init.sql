@@ -130,6 +130,22 @@ CREATE TABLE IF NOT EXISTS tournaments (
 );
 
 -- ------------------------------------------------------------------------------
+-- 8. NOTIFICATIONS TABLE (Player alerts for match results & appeals)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS notifications (
+    id VARCHAR(64) PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    club_id VARCHAR(64) REFERENCES clubs(id) ON DELETE CASCADE,
+    type VARCHAR(32) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    data JSONB,
+    read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id, created_at DESC);
+
+-- ------------------------------------------------------------------------------
 -- INDEXES
 -- ------------------------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_players_club_id ON players(club_id);

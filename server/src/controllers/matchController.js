@@ -44,6 +44,8 @@ function toMatch(row, playersById) {
     updatedByName: row.updated_by_name || (details.lastUpdatedBy && details.lastUpdatedBy.name) || null,
     updatedAt: row.updated_at || (details.lastUpdatedBy && details.lastUpdatedBy.at) || null,
     updatedByRole: (details.lastUpdatedBy && details.lastUpdatedBy.role) || null,
+    confirmedPlayerIds: Array.isArray(details.confirmedPlayerIds) ? details.confirmedPlayerIds : [],
+    appeals: Array.isArray(details.appeals) ? details.appeals : [],
   };
 }
 
@@ -134,6 +136,9 @@ async function recordMatch(req, res) {
       deltaRating: Math.max(-1, Math.min(1, num(team.deltaRating))),
       newRatingAvg: num(team.newRatingAvg),
     });
+    const creatorPlayerId = (req.membership && allIds.includes(req.membership.id)) ? req.membership.id : null;
+    const initialConfirmed = creatorPlayerId ? [creatorPlayerId] : [];
+
     const details = {
       team1: teamInfo(team1),
       team2: teamInfo(team2),
@@ -142,6 +147,8 @@ async function recordMatch(req, res) {
       actualPointsShareTeam1: num(body.actualPointsShareTeam1, 0.5),
       expectedPointsShareTeam1: num(body.expectedPointsShareTeam1, 0.5),
       marginOfVictoryFactor: num(body.marginOfVictoryFactor, 1),
+      confirmedPlayerIds: initialConfirmed,
+      appeals: [],
     };
 
     const matchDate = body.date && !Number.isNaN(Date.parse(body.date)) ? new Date(body.date) : new Date();
@@ -189,6 +196,45 @@ async function recordMatch(req, res) {
     for (const id of lineup.team2) await applyResult(id, details.team2.deltaRating, winner === 2, score2 - score1);
 
     await client.query('UPDATE clubs SET match_count = match_count + 1 WHERE id = $1', [clubId]);
+
+    // Send notifications to all participants who have accounts
+    const team1Names = lineup.team1.map((id) => rowsById.get(id)?.name || 'VĐV').join(' & ');
+    const team2Names = lineup.team2.map((id) => rowsById.get(id)?.name || 'VĐV').join(' & ');
+
+    for (const id of allIds) {
+      const p = rowsById.get(id);
+      if (p && p.user_id) {
+        const isCreator = (id === creatorPlayerId);
+        const notifId = newId('notif');
+        const title = isCreator ? 'Bạn đã ghi nhận kết quả trận đấu' : 'Kết quả trận đấu mới cần xác nhận';
+        const message = `Trận đấu: ${team1Names} (${score1}) vs ${team2Names} (${score2}) tại ${courtName}. ` +
+          (isCreator ? 'Kết quả đã được ghi nhận và bạn đã tự động xác nhận.' : 'Vui lòng xác nhận kết quả hoặc gửi kháng cáo nếu có sai sót.');
+
+        await client.query(`
+          INSERT INTO notifications (id, user_id, club_id, type, title, message, data, read)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `, [
+          notifId,
+          p.user_id,
+          clubId,
+          'match_result',
+          title,
+          message,
+          JSON.stringify({
+            matchId,
+            clubId,
+            score1,
+            score2,
+            team1Names,
+            team2Names,
+            courtName,
+            format,
+            date: matchDate.toISOString(),
+          }),
+          isCreator,
+        ]);
+      }
+    }
 
     const playersById = await loadPlayersById(client, insertRes.rows);
     await client.query('COMMIT');
@@ -351,7 +397,7 @@ async function updateMatch(req, res) {
   try {
     const check = await checkMatchManager(req, res, req.params.id);
     if (!check) return;
-    const { match: oldMatch } = check;
+    const { match: oldMatch, membership } = check;
     const body = req.body || {};
 
     const client = await db.pool.connect();
@@ -452,6 +498,8 @@ async function updateMatch(req, res) {
           role: updaterRole,
           at: updatedAt.toISOString(),
         },
+        confirmedPlayerIds: [],
+        appeals: [],
       };
 
       // 4. Update match row
@@ -517,6 +565,32 @@ async function updateMatch(req, res) {
         await recalculatePlayerStreakAndForm(client, clubId, pid);
       }
 
+      // Notify players of the update
+      for (const pid of allIds) {
+        const p = rowsById.get(pid);
+        if (p && p.user_id) {
+          const notifId = newId('notif');
+          await client.query(`
+            INSERT INTO notifications (id, user_id, club_id, type, title, message, data, read)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)
+          `, [
+            notifId,
+            p.user_id,
+            clubId,
+            'match_result',
+            'Kết quả trận đấu đã được cập nhật',
+            `Kết quả trận đấu (${courtName}) đã được ${updaterName} cập nhật lại. Tỉ số mới: ${score1} - ${score2}. Vui lòng kiểm tra và xác nhận lại.`,
+            JSON.stringify({
+              matchId: oldMatch.id,
+              clubId,
+              score1,
+              score2,
+              courtName,
+            }),
+          ]);
+        }
+      }
+
       const playersById = await loadPlayersById(client, updateRes.rows);
       await client.query('COMMIT');
 
@@ -534,10 +608,169 @@ async function updateMatch(req, res) {
   }
 }
 
+// POST /api/matches/:id/confirm
+async function confirmMatch(req, res) {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const matchRes = await db.query('SELECT * FROM matches WHERE id = $1', [id]);
+    if (matchRes.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Không tìm thấy trận đấu' });
+    }
+    const match = matchRes.rows[0];
+
+    // Check if user is a participant in this match
+    const participantIds = [match.team1_player1_id, match.team1_player2_id, match.team2_player1_id, match.team2_player2_id].filter(Boolean);
+    const playerRes = await db.query(
+      `SELECT * FROM players WHERE club_id = $1 AND user_id = $2 AND id = ANY($3) AND removed_at IS NULL`,
+      [match.club_id, userId, participantIds]
+    );
+
+    let targetPlayer = playerRes.rows[0];
+    if (!targetPlayer) {
+      // Check if user is manager confirming on behalf of a player
+      const membership = await getMembership(userId, match.club_id);
+      if (membership && isManager(membership) && req.body.playerId && participantIds.includes(req.body.playerId)) {
+        const customPlayerRes = await db.query('SELECT * FROM players WHERE id = $1', [req.body.playerId]);
+        targetPlayer = customPlayerRes.rows[0];
+      }
+    }
+
+    if (!targetPlayer) {
+      return res.status(403).json({ success: false, error: 'Bạn không phải là người tham gia trong trận đấu này' });
+    }
+
+    const details = typeof match.details === 'string' ? JSON.parse(match.details || '{}') : (match.details || {});
+    let confirmedPlayerIds = Array.isArray(details.confirmedPlayerIds) ? [...details.confirmedPlayerIds] : [];
+    let appeals = Array.isArray(details.appeals) ? [...details.appeals] : [];
+
+    if (!confirmedPlayerIds.includes(targetPlayer.id)) {
+      confirmedPlayerIds.push(targetPlayer.id);
+    }
+    // Remove this player's appeal if previously appealed
+    appeals = appeals.filter((a) => a.playerId !== targetPlayer.id);
+
+    details.confirmedPlayerIds = confirmedPlayerIds;
+    details.appeals = appeals;
+
+    await db.query('UPDATE matches SET details = $1 WHERE id = $2', [JSON.stringify(details), id]);
+
+    // Mark related notification as read if any
+    await db.query(
+      `UPDATE notifications SET read = TRUE WHERE user_id = $1 AND (data->>'matchId') = $2`,
+      [userId, id]
+    ).catch(() => {});
+
+    const playersById = await loadPlayersById(db, [match]);
+    match.details = details;
+    res.json({ success: true, data: toMatch(match, playersById) });
+  } catch (err) {
+    console.error('confirmMatch error:', err);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+// POST /api/matches/:id/appeal
+async function appealMatch(req, res) {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const userId = req.user.id;
+
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ success: false, error: 'Vui lòng cung cấp lý do kháng cáo' });
+    }
+
+    const matchRes = await db.query('SELECT * FROM matches WHERE id = $1', [id]);
+    if (matchRes.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Không tìm thấy trận đấu' });
+    }
+    const match = matchRes.rows[0];
+
+    const participantIds = [match.team1_player1_id, match.team1_player2_id, match.team2_player1_id, match.team2_player2_id].filter(Boolean);
+    const playerRes = await db.query(
+      `SELECT * FROM players WHERE club_id = $1 AND user_id = $2 AND id = ANY($3) AND removed_at IS NULL`,
+      [match.club_id, userId, participantIds]
+    );
+
+    let targetPlayer = playerRes.rows[0];
+    if (!targetPlayer) {
+      const membership = await getMembership(userId, match.club_id);
+      if (membership && isManager(membership) && req.body.playerId && participantIds.includes(req.body.playerId)) {
+        const customPlayerRes = await db.query('SELECT * FROM players WHERE id = $1', [req.body.playerId]);
+        targetPlayer = customPlayerRes.rows[0];
+      }
+    }
+
+    if (!targetPlayer) {
+      return res.status(403).json({ success: false, error: 'Bạn không phải là người tham gia trong trận đấu này' });
+    }
+
+    const details = typeof match.details === 'string' ? JSON.parse(match.details || '{}') : (match.details || {});
+    let confirmedPlayerIds = Array.isArray(details.confirmedPlayerIds) ? [...details.confirmedPlayerIds] : [];
+    let appeals = Array.isArray(details.appeals) ? [...details.appeals] : [];
+
+    // Remove from confirmed
+    confirmedPlayerIds = confirmedPlayerIds.filter((pid) => pid !== targetPlayer.id);
+
+    // Add or update appeal
+    appeals = appeals.filter((a) => a.playerId !== targetPlayer.id);
+    appeals.push({
+      playerId: targetPlayer.id,
+      playerName: targetPlayer.name,
+      reason: reason.trim(),
+      createdAt: new Date().toISOString(),
+    });
+
+    details.confirmedPlayerIds = confirmedPlayerIds;
+    details.appeals = appeals;
+
+    await db.query('UPDATE matches SET details = $1 WHERE id = $2', [JSON.stringify(details), id]);
+
+    // Notify club managers about the appeal
+    const managersRes = await db.query(
+      `SELECT user_id FROM players WHERE club_id = $1 AND role IN ('owner', 'admin') AND user_id IS NOT NULL AND removed_at IS NULL`,
+      [match.club_id]
+    );
+    for (const mgr of managersRes.rows) {
+      const notifId = newId('notif');
+      await db.query(`
+        INSERT INTO notifications (id, user_id, club_id, type, title, message, data, read)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)
+      `, [
+        notifId,
+        mgr.user_id,
+        match.club_id,
+        'match_appeal',
+        `Kháng cáo kết quả trận đấu từ ${targetPlayer.name}`,
+        `VĐV ${targetPlayer.name} đã kháng cáo kết quả trận đấu (${match.court_name || 'Sân CLB'}): "${reason.trim()}". Vui lòng kiểm tra và xử lý.`,
+        JSON.stringify({
+          matchId: id,
+          clubId: match.club_id,
+          playerId: targetPlayer.id,
+          playerName: targetPlayer.name,
+          reason: reason.trim(),
+        }),
+      ]);
+    }
+
+    const playersById = await loadPlayersById(db, [match]);
+    match.details = details;
+    res.json({ success: true, data: toMatch(match, playersById) });
+  } catch (err) {
+    console.error('appealMatch error:', err);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
 module.exports = {
   getMatches,
   recordMatch,
   createMatch: recordMatch,
   deleteMatch,
   updateMatch,
+  confirmMatch,
+  appealMatch,
 };
+

@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useState, useEffect, useMemo } from 'react';
-import { Player, MatchResult, ClubInfo, ClubRole, UserAccount } from '../types/pickleball';
+import { Player, MatchResult, ClubInfo, ClubRole, UserAccount, AppNotification } from '../types/pickleball';
 import { api, NewClubInput } from '../services/api';
 import { useAuth } from './AuthContext';
 import { ClubOnboarding } from '../components/ClubOnboarding';
@@ -42,6 +42,14 @@ interface PickleballContextType {
   deleteClub: () => Promise<void>;
   // `avatar` is only sent when the user picked a new one
   updateMyProfile: (name: string, doublesRating: number, singlesRating: number, avatar?: string) => Promise<void>;
+  // Notifications & Match Confirmation / Appeal
+  notifications: AppNotification[];
+  unreadNotificationsCount: number;
+  refreshNotifications: () => Promise<void>;
+  markNotificationRead: (id: string) => Promise<void>;
+  markAllNotificationsRead: () => Promise<void>;
+  confirmMatch: (matchId: string, playerId?: string) => Promise<void>;
+  appealMatch: (matchId: string, reason: string) => Promise<void>;
 }
 
 const PickleballContext = createContext<PickleballContextType | undefined>(undefined);
@@ -95,12 +103,30 @@ export const PickleballProvider: React.FC<{ user: UserAccount; children: React.R
   });
   const [players, setPlayers] = useState<Player[]>([]);
   const [matches, setMatches] = useState<MatchResult[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
   const [loadedClubId, setLoadedClubId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<AppTab>('home');
   const [lang, setLang] = useState<'vi' | 'en'>('vi');
   const [viewMode, setViewMode] = useState<ViewMode>(() => (window.innerWidth < 768 ? 'mobile' : 'desktop'));
+
+  const refreshNotifications = useCallback(async () => {
+    try {
+      const res = await api.getNotifications();
+      setNotifications(res.notifications);
+      setUnreadNotificationsCount(res.unreadCount);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshNotifications();
+    const timer = setInterval(refreshNotifications, 15000);
+    return () => clearInterval(timer);
+  }, [refreshNotifications]);
 
   // Sync defaultClubId from user profile if changed
   useEffect(() => {
@@ -292,17 +318,49 @@ export const PickleballProvider: React.FC<{ user: UserAccount; children: React.R
   // The server stores the match and updates the participants' ratings and records
   const recordNewMatch = async (newMatch: MatchResult) => {
     await api.recordMatch(selectedClub.id, newMatch);
-    await refreshClub();
+    await Promise.all([refreshClub(), refreshNotifications()]);
   };
 
   const updateMatch = async (matchId: string, updatedMatch: MatchResult) => {
     await api.updateMatch(matchId, { ...updatedMatch, clubId: selectedClub.id });
-    await refreshClub();
+    await Promise.all([refreshClub(), refreshNotifications()]);
   };
 
   const deleteMatch = async (matchId: string) => {
     await api.deleteMatch(matchId);
     await refreshClub();
+  };
+
+  const markNotificationRead = async (id: string) => {
+    try {
+      await api.markNotificationRead(id);
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+      setUnreadNotificationsCount((prev) => Math.max(0, prev - 1));
+    } catch (err) {
+      console.error('markNotificationRead error:', err);
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
+    try {
+      await api.markAllNotificationsRead();
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      setUnreadNotificationsCount(0);
+    } catch (err) {
+      console.error('markAllNotificationsRead error:', err);
+    }
+  };
+
+  const confirmMatch = async (matchId: string, playerId?: string) => {
+    const updated = await api.confirmMatch(matchId, playerId);
+    setMatches((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+    await refreshNotifications();
+  };
+
+  const appealMatch = async (matchId: string, reason: string) => {
+    const updated = await api.appealMatch(matchId, reason);
+    setMatches((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+    await refreshNotifications();
   };
 
   return (
@@ -336,6 +394,13 @@ export const PickleballProvider: React.FC<{ user: UserAccount; children: React.R
         joinClub,
         deleteClub,
         updateMyProfile,
+        notifications,
+        unreadNotificationsCount,
+        refreshNotifications,
+        markNotificationRead,
+        markAllNotificationsRead,
+        confirmMatch,
+        appealMatch,
       }}
     >
       {children}
