@@ -71,6 +71,9 @@ export interface MatchResult {
   updatedByRole?: string;
   confirmedPlayerIds?: string[];
   appeals?: MatchAppeal[];
+  createdByUserId?: string | null;
+  createdByPlayerId?: string | null;
+  createdByName?: string | null;
 }
 
 export interface MatchAppeal {

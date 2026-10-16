@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS matches (
     delta_rating NUMERIC(6, 3) DEFAULT 0.040,
     notes TEXT,
     details JSONB, -- per-team rating deltas and win probabilities
+    created_by_user_id VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
     updated_by_name VARCHAR(128),
     updated_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

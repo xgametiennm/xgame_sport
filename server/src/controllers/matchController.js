@@ -46,6 +46,9 @@ function toMatch(row, playersById) {
     updatedByRole: (details.lastUpdatedBy && details.lastUpdatedBy.role) || null,
     confirmedPlayerIds: Array.isArray(details.confirmedPlayerIds) ? details.confirmedPlayerIds : [],
     appeals: Array.isArray(details.appeals) ? details.appeals : [],
+    createdByUserId: row.created_by_user_id || (details.createdBy && details.createdBy.userId) || null,
+    createdByPlayerId: (details.createdBy && details.createdBy.playerId) || null,
+    createdByName: (details.createdBy && details.createdBy.name) || null,
   };
 }
 
@@ -138,6 +141,8 @@ async function recordMatch(req, res) {
     });
     const creatorPlayerId = (req.membership && allIds.includes(req.membership.id)) ? req.membership.id : null;
     const initialConfirmed = creatorPlayerId ? [creatorPlayerId] : [];
+    const creatorUserId = req.user ? req.user.id : null;
+    const creatorName = req.membership ? req.membership.name : (req.user ? req.user.name : 'Người ghi nhận');
 
     const details = {
       team1: teamInfo(team1),
@@ -149,6 +154,11 @@ async function recordMatch(req, res) {
       marginOfVictoryFactor: num(body.marginOfVictoryFactor, 1),
       confirmedPlayerIds: initialConfirmed,
       appeals: [],
+      createdBy: {
+        userId: creatorUserId,
+        playerId: req.membership ? req.membership.id : null,
+        name: creatorName,
+      },
     };
 
     const matchDate = body.date && !Number.isNaN(Date.parse(body.date)) ? new Date(body.date) : new Date();
@@ -159,14 +169,15 @@ async function recordMatch(req, res) {
         id, club_id, match_date, format, importance, court_name, winner, sets,
         total_score_team1, total_score_team2,
         team1_player1_id, team1_player2_id, team2_player1_id, team2_player2_id,
-        delta_rating, notes, details
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        delta_rating, notes, details, created_by_user_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
       RETURNING *
     `, [
       matchId, clubId, matchDate, format, importance, courtName, winner, JSON.stringify(sets),
       score1, score2,
       lineup.team1[0], lineup.team1[1] || null, lineup.team2[0], lineup.team2[1] || null,
       Math.abs(details.team1.deltaRating), notes || '', JSON.stringify(details),
+      creatorUserId,
     ]);
 
     const applyResult = async (playerId, delta, won, pointDiff) => {
@@ -343,7 +354,7 @@ async function rollbackMatchStats(client, match) {
   await client.query('UPDATE clubs SET match_count = GREATEST(0, match_count - 1) WHERE id = $1', [match.club_id]);
 }
 
-async function checkMatchManager(req, res, matchId) {
+async function checkMatchEditPermission(req, res, matchId, action = 'sửa') {
   const matchRes = await db.query('SELECT * FROM matches WHERE id = $1', [matchId]);
   if (matchRes.rows.length === 0) {
     res.status(404).json({ success: false, error: 'Không tìm thấy trận đấu' });
@@ -351,19 +362,54 @@ async function checkMatchManager(req, res, matchId) {
   }
   const match = matchRes.rows[0];
   const membership = await getMembership(req.user.id, match.club_id);
-  if (!membership || !isManager(membership)) {
+  if (!membership) {
+    res.status(403).json({ success: false, error: 'Bạn không phải là thành viên của CLB này' });
+    return null;
+  }
+
+  // 1. Quản trị viên và Chủ CLB luôn có quyền sửa và xóa
+  if (isManager(membership)) {
+    return { match, membership, isManager: true };
+  }
+
+  // 2. Kiểm tra nếu là người tạo điểm số (người ghi nhận trận đấu)
+  const details = typeof match.details === 'string' ? JSON.parse(match.details || '{}') : (match.details || {});
+  const createdByUserId = match.created_by_user_id || (details.createdBy && details.createdBy.userId);
+  const createdByPlayerId = details.createdBy && details.createdBy.playerId;
+
+  const isCreator = Boolean(
+    (createdByUserId && createdByUserId === req.user.id) ||
+    (createdByPlayerId && createdByPlayerId === membership.id)
+  );
+
+  if (!isCreator) {
     res.status(403).json({
       success: false,
-      error: 'Chỉ chủ CLB hoặc quản trị viên mới có quyền chỉnh sửa hoặc xóa kết quả trận đấu'
+      error: 'Chỉ người tạo điểm số hoặc Quản trị viên CLB mới có quyền chỉnh sửa kết quả trận đấu'
     });
     return null;
   }
-  return { match, membership };
+
+  // 3. Khi chưa xác nhận thì người tạo điểm số vẫn edit được.
+  // Khi có người confirm rồi thì người nhập không edit được nữa mà chỉ admin có quyền sửa.
+  const confirmedPlayerIds = Array.isArray(details.confirmedPlayerIds) ? details.confirmedPlayerIds : [];
+  // Người xác nhận khác (không tính bản thân người tạo nếu họ đã tự xác nhận):
+  const otherConfirmations = confirmedPlayerIds.filter((id) => id !== createdByPlayerId);
+
+  if (otherConfirmations.length > 0) {
+    res.status(403).json({
+      success: false,
+      error: 'Kết quả trận đấu đã được người chơi khác xác nhận. Khi đã có người xác nhận, chỉ Quản trị viên hoặc Chủ CLB mới có quyền chỉnh sửa.'
+    });
+    return null;
+  }
+
+  return { match, membership, isManager: false };
 }
 
 async function deleteMatch(req, res) {
   try {
-    const check = await checkMatchManager(req, res, req.params.id);
+    const check = await checkMatchEditPermission(req, res, req.params.id, 'xóa');
     if (!check) return;
     const { match } = check;
 
@@ -395,7 +441,7 @@ async function deleteMatch(req, res) {
 
 async function updateMatch(req, res) {
   try {
-    const check = await checkMatchManager(req, res, req.params.id);
+    const check = await checkMatchEditPermission(req, res, req.params.id, 'sửa');
     if (!check) return;
     const { match: oldMatch, membership } = check;
     const body = req.body || {};
@@ -485,6 +531,13 @@ async function updateMatch(req, res) {
       const updaterRole = membership && membership.role === 'owner' ? 'Chủ CLB' : 'Quản trị viên';
       const updatedAt = new Date();
 
+      const oldDetails = typeof oldMatch.details === 'string' ? JSON.parse(oldMatch.details || '{}') : (oldMatch.details || {});
+      const createdBy = oldDetails.createdBy || {
+        userId: oldMatch.created_by_user_id || req.user.id,
+        playerId: membership.id,
+        name: updaterName,
+      };
+
       const details = {
         team1: teamInfo(team1, deltaTeam1),
         team2: teamInfo(team2, deltaTeam2),
@@ -493,6 +546,7 @@ async function updateMatch(req, res) {
         actualPointsShareTeam1: num(body.actualPointsShareTeam1, (score1 + score2 > 0 ? score1 / (score1 + score2) : 0.5)),
         expectedPointsShareTeam1: num(body.expectedPointsShareTeam1, 0.5),
         marginOfVictoryFactor: num(body.marginOfVictoryFactor, 1),
+        createdBy,
         lastUpdatedBy: {
           name: updaterName,
           role: updaterRole,

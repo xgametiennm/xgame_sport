@@ -11,7 +11,7 @@ interface EditMatchModalProps {
 }
 
 export const EditMatchModal: React.FC<EditMatchModalProps> = ({ isOpen, match, onClose }) => {
-  const { players, updateMatch, selectedClub, lang } = usePickleball();
+  const { players, updateMatch, selectedClub, lang, isManager } = usePickleball();
 
   const [format, setFormat] = useState<GameFormat>('doubles');
   const [importance, setImportance] = useState<MatchImportance>('league');
@@ -117,7 +117,7 @@ export const EditMatchModal: React.FC<EditMatchModalProps> = ({ isOpen, match, o
                 {lang === 'vi' ? 'Chỉnh Sửa Kết Quả Trận Đấu' : 'Edit Match Result'}
               </h2>
               <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>
-                Dành cho Quản trị viên & Chủ câu lạc bộ
+                {isManager ? 'Dành cho Quản trị viên & Chủ câu lạc bộ' : 'Người nhập điểm (khi chưa có người xác nhận)'}
               </div>
             </div>
           </div>

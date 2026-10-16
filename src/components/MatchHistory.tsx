@@ -18,8 +18,10 @@ import {
   CheckCircle2,
   AlertTriangle,
   Clock,
-  ShieldAlert
+  ShieldAlert,
+  Lock
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { EditMatchModal } from './EditMatchModal';
 import { MatchConfirmationModal } from './MatchConfirmationModal';
 import { MatchResult } from '../types/pickleball';
@@ -32,6 +34,7 @@ interface MatchHistoryProps {
 const PAGE_SIZE = 15;
 
 export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, onSelectPlayer }) => {
+  const { currentUser } = useAuth();
   const { matches, selectedClub, isManager, deleteMatch, myPlayer, confirmMatch } = usePickleball();
   const [editingMatch, setEditingMatch] = useState<MatchResult | null>(null);
   const [confirmationModalMatch, setConfirmationModalMatch] = useState<MatchResult | null>(null);
@@ -436,6 +439,17 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
             const isMyConfirmed = myPlayer ? confirmedIds.includes(myPlayer.id) : false;
             const myAppeal = myPlayer ? appeals.find((a) => a.playerId === myPlayer.id) : null;
 
+            const isCreator = Boolean(
+              (match.createdByUserId && currentUser && match.createdByUserId === currentUser.id) ||
+              (match.createdByPlayerId && myPlayer && match.createdByPlayerId === myPlayer.id)
+            );
+            const otherConfirmations = confirmedIds.filter(
+              (id) => (!match.createdByPlayerId || id !== match.createdByPlayerId) && (!myPlayer || id !== myPlayer.id || !isCreator)
+            );
+            const hasOtherConfirmations = otherConfirmations.length > 0;
+            const canEdit = isManager || (isCreator && !hasOtherConfirmations);
+            const canDelete = isManager || (isCreator && !hasOtherConfirmations);
+
             return (
               <div
                 key={match.id}
@@ -544,6 +558,27 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
                       )}
                     </button>
 
+                    {/* Created By Badge */}
+                    {match.createdByName && (
+                      <span
+                        title={`Người nhập điểm ban đầu: ${match.createdByName}`}
+                        style={{
+                          padding: '3px 8px',
+                          borderRadius: 6,
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          background: '#f8fafc',
+                          color: '#475569',
+                          border: '1px solid #e2e8f0',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                      >
+                        <span>👤 Tạo bởi: {match.createdByName}</span>
+                      </span>
+                    )}
+
                     {/* Last Updated Badge */}
                     {match.updatedByName && (
                       <span
@@ -573,56 +608,83 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
                       <span>{formatDate(match.date)}</span>
                     </div>
 
-                    {isManager && (
+                    {(canEdit || canDelete || (isCreator && hasOtherConfirmations && !isManager)) && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingMatch(match);
-                          }}
-                          title="Quản trị viên & Chủ CLB: Chỉnh sửa kết quả trận đấu"
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 4,
-                            padding: '4px 10px',
-                            borderRadius: 8,
-                            border: '1px solid #cbd5e1',
-                            background: '#ffffff',
-                            color: '#0d5e46',
-                            fontSize: '0.75rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                          }}
-                        >
-                          <Edit3 size={13} color="#059669" />
-                          <span>Sửa</span>
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteMatch(match);
-                          }}
-                          title="Quản trị viên & Chủ CLB: Xóa kết quả trận đấu"
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 4,
-                            padding: '4px 10px',
-                            borderRadius: 8,
-                            border: '1px solid #fecaca',
-                            background: '#fef2f2',
-                            color: '#dc2626',
-                            fontSize: '0.75rem',
-                            fontWeight: 800,
-                            cursor: 'pointer',
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                          }}
-                        >
-                          <Trash2 size={13} color="#dc2626" />
-                          <span>Xóa</span>
-                        </button>
+                        {canEdit && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingMatch(match);
+                            }}
+                            title={isManager ? "Quản trị viên & Chủ CLB: Chỉnh sửa kết quả trận đấu" : "Người nhập điểm: Chỉnh sửa kết quả (khi chưa có người xác nhận)"}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              padding: '4px 10px',
+                              borderRadius: 8,
+                              border: '1px solid #cbd5e1',
+                              background: '#ffffff',
+                              color: '#0d5e46',
+                              fontSize: '0.75rem',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                            }}
+                          >
+                            <Edit3 size={13} color="#059669" />
+                            <span>Sửa</span>
+                          </button>
+                        )}
+
+                        {isCreator && hasOtherConfirmations && !isManager && (
+                          <div
+                            title="Kết quả trận đấu đã có người xác nhận. Khi đã có người xác nhận, chỉ Quản trị viên hoặc Chủ CLB mới có quyền chỉnh sửa."
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              padding: '4px 8px',
+                              borderRadius: 8,
+                              border: '1px solid #fed7aa',
+                              background: '#fff7ed',
+                              color: '#c2410c',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              cursor: 'not-allowed',
+                            }}
+                          >
+                            <Lock size={12} color="#c2410c" />
+                            <span>Đã khóa sửa</span>
+                          </div>
+                        )}
+
+                        {canDelete && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteMatch(match);
+                            }}
+                            title={isManager ? "Quản trị viên & Chủ CLB: Xóa kết quả trận đấu" : "Người nhập điểm: Xóa kết quả trận đấu"}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              padding: '4px 10px',
+                              borderRadius: 8,
+                              border: '1px solid #fecaca',
+                              background: '#fef2f2',
+                              color: '#dc2626',
+                              fontSize: '0.75rem',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                            }}
+                          >
+                            <Trash2 size={13} color="#dc2626" />
+                            <span>Xóa</span>
+                          </button>
+                        )}
                       </div>
                     )}
 
