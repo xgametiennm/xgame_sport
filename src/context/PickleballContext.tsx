@@ -29,7 +29,7 @@ interface PickleballContextType {
   lang: 'vi' | 'en';
   setLang: (lang: 'vi' | 'en') => void;
   refreshClub: () => Promise<void>;
-  recordNewMatch: (newMatch: MatchResult) => Promise<void>;
+  recordNewMatch: (newMatch: MatchResult & { isSubsequentMatch?: boolean }) => Promise<{ match: MatchResult; autoConfirmed?: boolean; newlyConfirmed?: boolean; message?: string }>;
   updateMatch: (matchId: string, updatedMatch: MatchResult) => Promise<void>;
   deleteMatch: (matchId: string) => Promise<void>;
   addNewPlayer: (name: string, doublesRating: number, singlesRating: number, email?: string) => Promise<Player>;
@@ -316,9 +316,10 @@ export const PickleballProvider: React.FC<{ user: UserAccount; children: React.R
   };
 
   // The server stores the match and updates the participants' ratings and records
-  const recordNewMatch = async (newMatch: MatchResult) => {
-    await api.recordMatch(selectedClub.id, newMatch);
+  const recordNewMatch = async (newMatch: MatchResult & { isSubsequentMatch?: boolean }) => {
+    const result = await api.recordMatch(selectedClub.id, newMatch);
     await Promise.all([refreshClub(), refreshNotifications()]);
+    return result;
   };
 
   const updateMatch = async (matchId: string, updatedMatch: MatchResult) => {

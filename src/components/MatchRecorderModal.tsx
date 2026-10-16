@@ -22,6 +22,10 @@ export const MatchRecorderModal: React.FC<MatchRecorderModalProps> = ({ isOpen, 
   const [t2p1Id, setT2p1Id] = useState<string>(players[1]?.id || '');
   const [t2p2Id, setT2p2Id] = useState<string>(players[3]?.id || '');
 
+  // Date & Subsequent match
+  const [matchDate, setMatchDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [isSubsequentMatch, setIsSubsequentMatch] = useState<boolean>(false);
+
   // Scores
   const [score1, setScore1] = useState<number>(11);
   const [score2, setScore2] = useState<number>(8);
@@ -40,18 +44,25 @@ export const MatchRecorderModal: React.FC<MatchRecorderModalProps> = ({ isOpen, 
     if (!p1 || !p3) return;
 
     try {
-      await recordNewMatch(buildMatchResult({
-        id: `match-${Date.now()}`,
-        date: new Date().toISOString(),
-        format,
-        importance,
-        courtName: `${selectedClub.name} - Sân CLB`,
-        team1: [p1, p2],
-        team2: [p3, p4],
-        score1,
-        score2,
-        notes,
-      }));
+      const res = await recordNewMatch({
+        ...buildMatchResult({
+          id: `match-${Date.now()}`,
+          date: new Date(matchDate).toISOString(),
+          format,
+          importance,
+          courtName: `${selectedClub.name} - Sân CLB`,
+          team1: [p1, p2],
+          team2: [p3, p4],
+          score1,
+          score2,
+          notes,
+        }),
+        isSubsequentMatch,
+      });
+
+      if (res?.autoConfirmed) {
+        window.alert(res.message || 'Trận đấu đã được ghi nhận trước đó. Hệ thống đã tự động gộp và xác nhận kết quả cho bạn!');
+      }
     } catch (err) {
       window.alert(err instanceof Error ? err.message : 'Không lưu được trận đấu');
       return;
@@ -131,6 +142,21 @@ export const MatchRecorderModal: React.FC<MatchRecorderModalProps> = ({ isOpen, 
             >
               Đơn (1v1)
             </button>
+          </div>
+
+          {/* Match Date */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569' }}>
+              📅 Ngày diễn ra trận đấu:
+            </label>
+            <input
+              type="date"
+              value={matchDate}
+              onChange={(e) => setMatchDate(e.target.value)}
+              className="input-dark"
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: '0.88rem' }}
+              required
+            />
           </div>
 
           {/* Team 1 selection */}
@@ -231,10 +257,34 @@ export const MatchRecorderModal: React.FC<MatchRecorderModalProps> = ({ isOpen, 
             </div>
           </div>
 
+          {/* Subsequent match checkbox */}
+          <label style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '10px 14px',
+            borderRadius: 10,
+            background: isSubsequentMatch ? '#ecfdf5' : '#f8fafc',
+            border: isSubsequentMatch ? '1.5px solid #059669' : '1px solid #e2e8f0',
+            cursor: 'pointer',
+            fontSize: '0.82rem',
+            fontWeight: 700,
+            color: isSubsequentMatch ? '#065f46' : '#64748b',
+            transition: 'all 0.15s ease',
+          }}>
+            <input
+              type="checkbox"
+              checked={isSubsequentMatch}
+              onChange={(e) => setIsSubsequentMatch(e.target.checked)}
+              style={{ width: 16, height: 16, accentColor: '#059669', cursor: 'pointer' }}
+            />
+            <span>Đây là trận tiếp theo / Set đấu mới giữa các VĐV này (không gộp kết quả)</span>
+          </label>
+
           <button
             type="submit"
             className="btn-primary"
-            style={{ width: '100%', marginTop: 8, padding: '12px', fontSize: '1rem' }}
+            style={{ width: '100%', marginTop: 4, padding: '12px', fontSize: '1rem' }}
           >
             <Save size={18} />
             <span>Lưu Trận Đấu & Cập Nhật DUPR Tức Thì</span>

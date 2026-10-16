@@ -134,6 +134,110 @@ async function recordMatch(req, res) {
     }
     const rowsById = new Map(playersRes.rows.map((row) => [row.id, row]));
 
+    const matchDate = body.date && !Number.isNaN(Date.parse(body.date)) ? new Date(body.date) : new Date();
+    const isSubsequentMatch = Boolean(body.isSubsequentMatch || body.forceNewMatch);
+
+    // ==========================================
+    // DUPLICATE & CONFLICT DETECTION ON MATCH DATE
+    // ==========================================
+    if (!isSubsequentMatch) {
+      // Find matches on the same date (within same calendar date or 12 hours)
+      const existingMatchesRes = await client.query(`
+        SELECT * FROM matches
+        WHERE club_id = $1
+          AND (
+            match_date::date = $2::date
+            OR ABS(EXTRACT(EPOCH FROM (match_date - $2::timestamptz))) <= 43200
+          )
+        ORDER BY match_date DESC
+      `, [clubId, matchDate.toISOString()]);
+
+      const samePlayers = (arr1, arr2) => {
+        if (arr1.length !== arr2.length) return false;
+        const s1 = new Set(arr1);
+        return arr2.every((id) => s1.has(id));
+      };
+
+      for (const row of existingMatchesRes.rows) {
+        const rowTeam1 = [row.team1_player1_id, row.team1_player2_id].filter(Boolean);
+        const rowTeam2 = [row.team2_player1_id, row.team2_player2_id].filter(Boolean);
+
+        const isSameOrientation = samePlayers(rowTeam1, lineup.team1) && samePlayers(rowTeam2, lineup.team2);
+        const isInvertedOrientation = samePlayers(rowTeam1, lineup.team2) && samePlayers(rowTeam2, lineup.team1);
+
+        if (isSameOrientation || isInvertedOrientation) {
+          // Exact matchup found on this date!
+          const scoresMatch = isSameOrientation
+            ? (Number(row.total_score_team1) === score1 && Number(row.total_score_team2) === score2)
+            : (Number(row.total_score_team1) === score2 && Number(row.total_score_team2) === score1);
+
+          const rowDetails = (typeof row.details === 'object' && row.details !== null)
+            ? row.details
+            : JSON.parse(row.details || '{}');
+          const creatorName = rowDetails.createdBy?.name || 'thành viên khác';
+          const dateStr = matchDate.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+
+          if (scoresMatch) {
+            // CASE 1: MATCHING SCORE -> AUTO CONFIRM (Merge, do not create duplicate match)
+            const confirmedPlayerIds = Array.isArray(rowDetails.confirmedPlayerIds) ? [...rowDetails.confirmedPlayerIds] : [];
+            const myPlayerId = (req.membership && allIds.includes(req.membership.id)) ? req.membership.id : null;
+            let newlyConfirmed = false;
+
+            if (myPlayerId && !confirmedPlayerIds.includes(myPlayerId)) {
+              confirmedPlayerIds.push(myPlayerId);
+              rowDetails.confirmedPlayerIds = confirmedPlayerIds;
+              newlyConfirmed = true;
+
+              await client.query(
+                'UPDATE matches SET details = $1 WHERE id = $2',
+                [JSON.stringify(rowDetails), row.id]
+              );
+
+              if (req.user) {
+                await client.query(`
+                  UPDATE notifications 
+                  SET read = true 
+                  WHERE user_id = $1 AND club_id = $2 AND data->>'matchId' = $3
+                `, [req.user.id, clubId, row.id]);
+              }
+            }
+
+            row.details = rowDetails;
+            const playersById = await loadPlayersById(client, [row]);
+            await client.query('COMMIT');
+            const formattedMatch = toMatch(row, playersById);
+
+            return res.status(200).json({
+              success: true,
+              autoConfirmed: true,
+              newlyConfirmed,
+              data: formattedMatch,
+              message: `Trận đấu vào ngày ${dateStr} đã được ${creatorName} ghi nhận trước đó với tỉ số (${score1} - ${score2}). Hệ thống đã tự động ghi nhận bạn XÁC NHẬN kết quả thành công!`
+            });
+          } else {
+            // CASE 2: CONFLICTING SCORE ON SAME DATE -> REQUIRE RESOLUTION OR SUBSEQUENT MATCH
+            await client.query('ROLLBACK');
+
+            const existingScore = isSameOrientation
+              ? `${row.total_score_team1} - ${row.total_score_team2}`
+              : `${row.total_score_team2} - ${row.total_score_team1}`;
+
+            return res.status(409).json({
+              success: false,
+              hasConflict: true,
+              conflictMatchId: row.id,
+              existingScore,
+              submittedScore: `${score1} - ${score2}`,
+              error: `Đã có trận đấu giữa các VĐV này vào ngày ${dateStr} do ${creatorName} ghi nhận với tỉ số [${existingScore}].\n` +
+                `Tỉ số bạn vừa nhập [${score1} - ${score2}] không khớp.\n\n` +
+                `• Nếu đây là trận đấu mới (Set 2 / trận tiếp theo trong ngày), vui lòng tích chọn "Đây là trận tiếp theo / Set đấu mới".\n` +
+                `• Nếu kết quả trước đó bị sai, bạn có thể vào Lịch sử đấu để gửi Kháng cáo.`
+            });
+          }
+        }
+      }
+    }
+
     const teamInfo = (team) => ({
       startRatingAvg: num(team.startRatingAvg),
       deltaRating: Math.max(-1, Math.min(1, num(team.deltaRating))),
@@ -161,7 +265,6 @@ async function recordMatch(req, res) {
       },
     };
 
-    const matchDate = body.date && !Number.isNaN(Date.parse(body.date)) ? new Date(body.date) : new Date();
     const matchId = newId('match');
 
     const insertRes = await client.query(`

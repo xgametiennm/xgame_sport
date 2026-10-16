@@ -112,8 +112,17 @@ class ApiService {
     return (await this.request(`/matches?clubId=${encodeURIComponent(clubId)}`)).data;
   }
 
-  async recordMatch(clubId: string, match: MatchResult): Promise<MatchResult> {
-    return (await this.request('/matches', 'POST', { ...match, clubId })).data;
+  async recordMatch(
+    clubId: string, 
+    match: MatchResult & { isSubsequentMatch?: boolean }
+  ): Promise<{ match: MatchResult; autoConfirmed?: boolean; newlyConfirmed?: boolean; message?: string }> {
+    const res = await this.request('/matches', 'POST', { ...match, clubId });
+    return {
+      match: res.data,
+      autoConfirmed: res.autoConfirmed,
+      newlyConfirmed: res.newlyConfirmed,
+      message: res.message,
+    };
   }
 
   async updateMatch(matchId: string, payload: Partial<MatchResult> & { clubId?: string }): Promise<MatchResult> {
