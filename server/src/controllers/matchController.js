@@ -111,13 +111,76 @@ async function recordMatch(req, res) {
   const perTeam = format === 'singles' ? 1 : 2;
   const allIds = [...lineup.team1, ...lineup.team2];
 
-  if (
-    !clubId || ![1, 2].includes(winner) || !Array.isArray(sets) || sets.length === 0 ||
-    !Number.isFinite(score1) || !Number.isFinite(score2) ||
-    lineup.team1.length !== perTeam || lineup.team2.length !== perTeam ||
-    new Set(allIds).size !== allIds.length
-  ) {
-    return res.status(400).json({ success: false, error: 'Thông tin trận đấu không hợp lệ' });
+  if (!clubId || ![1, 2].includes(winner)) {
+    return res.status(400).json({ success: false, error: 'Thông tin CLB hoặc đội chiến thắng không hợp lệ' });
+  }
+
+  if (lineup.team1.length !== perTeam || lineup.team2.length !== perTeam) {
+    return res.status(400).json({ 
+      success: false, 
+      error: `Trận đấu ${format === 'singles' ? 'đơn' : 'đôi'} yêu cầu chọn đủ ${perTeam} VĐV cho mỗi đội` 
+    });
+  }
+
+  if (new Set(allIds).size !== allIds.length) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Không thể chọn cùng một VĐV cho nhiều vị trí trong trận đấu' 
+    });
+  }
+
+  if (!Array.isArray(sets) || sets.length === 0) {
+    return res.status(400).json({ success: false, error: 'Dữ liệu tỉ số các hiệp đấu không hợp lệ' });
+  }
+
+  let t1SetsWon = 0;
+  let t2SetsWon = 0;
+
+  for (let idx = 0; idx < sets.length; idx++) {
+    const s = sets[idx];
+    const s1 = Number(s.team1);
+    const s2 = Number(s.team2);
+    if (!Number.isFinite(s1) || !Number.isFinite(s2) || s1 < 0 || s2 < 0) {
+      return res.status(400).json({ success: false, error: `Hiệp ${idx + 1}: Điểm số không hợp lệ` });
+    }
+    if (s1 === s2) {
+      return res.status(400).json({ 
+        success: false, 
+        error: `Hiệp ${idx + 1}: Tỉ số không thể hòa (${s1} - ${s2}). Pickleball bắt buộc phải có đội chiến thắng` 
+      });
+    }
+    const maxScore = Math.max(s1, s2);
+    const minScore = Math.min(s1, s2);
+    if (maxScore - minScore < 2) {
+      return res.status(400).json({ 
+        success: false, 
+        error: `Hiệp ${idx + 1}: Luật Pickleball bắt buộc thắng cách biệt tối thiểu 2 điểm (hiện tại: ${s1} - ${s2})` 
+      });
+    }
+    if (maxScore < 11) {
+      return res.status(400).json({ 
+        success: false, 
+        error: `Hiệp ${idx + 1}: Đội thắng phải đạt tối thiểu 11 điểm (hiện tại: ${s1} - ${s2})` 
+      });
+    }
+    if (s1 > s2) t1SetsWon++;
+    else t2SetsWon++;
+  }
+
+  if (sets.length > 1) {
+    if (t1SetsWon === t2SetsWon) {
+      return res.status(400).json({ 
+        success: false, 
+        error: `Trận đấu 3 hiệp chưa có kết quả chung cuộc (tỉ số hiệp đang hòa ${t1SetsWon} - ${t2SetsWon})` 
+      });
+    }
+    const expectedWinner = t1SetsWon > t2SetsWon ? 1 : 2;
+    if (winner !== expectedWinner) {
+      return res.status(400).json({ 
+        success: false, 
+        error: `Đội chiến thắng không khớp với kết quả các hiệp đấu (Đội ${expectedWinner} thắng ${Math.max(t1SetsWon, t2SetsWon)} hiệp)` 
+      });
+    }
   }
 
   const client = await db.pool.connect();
@@ -586,13 +649,61 @@ async function updateMatch(req, res) {
       const perTeam = format === 'singles' ? 1 : 2;
       const allIds = [...lineup.team1, ...lineup.team2];
 
-      if (
-        ![1, 2].includes(winner) || !Number.isFinite(score1) || !Number.isFinite(score2) ||
-        lineup.team1.length !== perTeam || lineup.team2.length !== perTeam ||
-        new Set(allIds).size !== allIds.length
-      ) {
+      if (![1, 2].includes(winner)) {
         await client.query('ROLLBACK');
-        return res.status(400).json({ success: false, error: 'Thông tin trận đấu không hợp lệ' });
+        return res.status(400).json({ success: false, error: 'Đội chiến thắng không hợp lệ' });
+      }
+
+      if (lineup.team1.length !== perTeam || lineup.team2.length !== perTeam) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ 
+          success: false, 
+          error: `Trận đấu ${format === 'singles' ? 'đơn' : 'đôi'} yêu cầu chọn đủ ${perTeam} VĐV cho mỗi đội` 
+        });
+      }
+
+      if (new Set(allIds).size !== allIds.length) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Không thể chọn cùng một VĐV cho nhiều vị trí trong trận đấu' 
+        });
+      }
+
+      if (Array.isArray(sets) && sets.length > 0) {
+        let t1Wins = 0;
+        let t2Wins = 0;
+        for (let idx = 0; idx < sets.length; idx++) {
+          const s = sets[idx];
+          const s1 = Number(s.team1);
+          const s2 = Number(s.team2);
+          if (s1 === s2) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ 
+              success: false, 
+              error: `Hiệp ${idx + 1}: Tỉ số không thể hòa (${s1} - ${s2}). Pickleball bắt buộc phải có đội chiến thắng` 
+            });
+          }
+          const maxScore = Math.max(s1, s2);
+          const minScore = Math.min(s1, s2);
+          if (maxScore - minScore < 2) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ 
+              success: false, 
+              error: `Hiệp ${idx + 1}: Luật Pickleball bắt buộc thắng cách biệt tối thiểu 2 điểm (hiện tại: ${s1} - ${s2})` 
+            });
+          }
+          if (s1 > s2) t1Wins++;
+          else t2Wins++;
+        }
+
+        if (sets.length > 1 && t1Wins === t2Wins) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ 
+            success: false, 
+            error: `Trận đấu 3 hiệp chưa có kết quả chung cuộc (tỉ số hiệp đang hòa ${t1Wins} - ${t2Wins})` 
+          });
+        }
       }
 
       // Check all players exist and belong to club

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { usePickleball } from '../context/PickleballContext';
 import { buildMatchResult } from '../utils/buildMatchResult';
 import { GameFormat, MatchImportance, MatchResult } from '../types/pickleball';
+import { validatePickleballSet } from '../utils/pickleballValidator';
 import { X, Save, Edit3 } from 'lucide-react';
 
 interface EditMatchModalProps {
@@ -68,6 +69,12 @@ export const EditMatchModal: React.FC<EditMatchModalProps> = ({ isOpen, match, o
     const allIds = [p1.id, p2?.id, p3.id, p4?.id].filter(Boolean);
     if (new Set(allIds).size !== allIds.length) {
       window.alert('Một người chơi không thể thi đấu cho nhiều vị trí trong cùng một trận');
+      return;
+    }
+
+    const val = validatePickleballSet(score1, score2, 11);
+    if (!val.valid) {
+      window.alert(`Tỉ số chưa hợp lệ theo luật Pickleball:\n\n${val.error}`);
       return;
     }
 

@@ -9,30 +9,40 @@ interface BuildMatchInput {
   courtName: string;
   team1: [Player, Player | undefined];
   team2: [Player, Player | undefined];
-  score1: number;
-  score2: number;
+  score1?: number;
+  score2?: number;
+  sets?: { team1: number; team2: number }[];
+  bestOfSets?: 1 | 3;
+  targetScore?: number;
   notes?: string;
 }
 
 /**
- * Runs the DUPR calculation for a single-set match and returns the record to store.
+ * Runs the DUPR calculation for a match (1 set or multi-set) and returns the record to store.
  */
 export function buildMatchResult(input: BuildMatchInput): MatchResult {
-  const { format, importance, score1, score2 } = input;
+  const { format, importance } = input;
   const [p1, p2] = input.team1;
   const [p3, p4] = input.team2;
 
   const rating = (p: Player) => (format === 'doubles' ? p.doublesRating : p.singlesRating);
   const played = (p: Player) => (format === 'doubles' ? p.matchesPlayedDoubles : p.matchesPlayedSingles);
 
-  const sets = [{ team1: score1, team2: score2 }];
+  const sets = (input.sets && input.sets.length > 0)
+    ? input.sets
+    : [{ team1: input.score1 ?? 11, team2: input.score2 ?? 8 }];
+
+  const totalScoreTeam1 = sets.reduce((sum, s) => sum + s.team1, 0);
+  const totalScoreTeam2 = sets.reduce((sum, s) => sum + s.team2, 0);
+  const bestOfSets = input.bestOfSets || (sets.length > 1 ? 3 : 1);
+  const targetScore: 11 | 15 | 21 = input.targetScore === 15 ? 15 : input.targetScore === 21 ? 21 : 11;
 
   const calc = calculateDupr({
     format,
     importance,
-    targetScore: 11,
+    targetScore,
     winByTwo: true,
-    bestOfSets: 1,
+    bestOfSets,
     t1p1Rating: rating(p1),
     t1p1Matches: played(p1),
     t1p2Rating: p2 ? rating(p2) : undefined,
@@ -52,8 +62,8 @@ export function buildMatchResult(input: BuildMatchInput): MatchResult {
     courtName: input.courtName,
     winner: calc.winner,
     sets,
-    totalScoreTeam1: score1,
-    totalScoreTeam2: score2,
+    totalScoreTeam1,
+    totalScoreTeam2,
     team1: {
       player1: p1,
       player2: p2,

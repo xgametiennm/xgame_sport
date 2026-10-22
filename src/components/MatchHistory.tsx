@@ -425,6 +425,9 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
             const team2Delta = match.team2.deltaRating;
             const score1 = match.sets && match.sets.length > 0 ? match.sets[0].team1 : match.totalScoreTeam1;
             const score2 = match.sets && match.sets.length > 0 ? match.sets[0].team2 : match.totalScoreTeam2;
+            const isMultiSet = Boolean(match.sets && match.sets.length > 1);
+            const t1SetsWon = isMultiSet ? match.sets!.filter((s) => s.team1 > s.team2).length : (match.winner === 1 ? 1 : 0);
+            const t2SetsWon = isMultiSet ? match.sets!.filter((s) => s.team2 > s.team1).length : (match.winner === 2 ? 1 : 0);
 
             const team1Players = [match.team1.player1, match.team1.player2].filter((p): p is Player => !!p);
             const team2Players = [match.team2.player1, match.team2.player2].filter((p): p is Player => !!p);
@@ -818,10 +821,10 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
                     </div>
                   </div>
 
-                  {/* SINGLE SET SCOREBOARD IN CENTER */}
+                  {/* SCOREBOARD IN CENTER */}
                   <div style={{
                     textAlign: 'center',
-                    minWidth: 120,
+                    minWidth: 130,
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
@@ -842,10 +845,15 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
                       alignItems: 'center',
                       gap: 8,
                     }}>
-                      <span style={{ color: isTeam1Winner ? '#bef264' : '#e2e8f0' }}>{score1}</span>
+                      <span style={{ color: isTeam1Winner ? '#bef264' : '#e2e8f0' }}>
+                        {isMultiSet ? t1SetsWon : score1}
+                      </span>
                       <span style={{ color: '#ffffff', opacity: 0.35, fontSize: '1.2rem' }}>:</span>
-                      <span style={{ color: !isTeam1Winner ? '#bef264' : '#e2e8f0' }}>{score2}</span>
+                      <span style={{ color: !isTeam1Winner ? '#bef264' : '#e2e8f0' }}>
+                        {isMultiSet ? t2SetsWon : score2}
+                      </span>
                     </div>
+
                     <span style={{
                       fontSize: '0.68rem',
                       fontWeight: 800,
@@ -857,8 +865,41 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
                       letterSpacing: '0.04em',
                       textTransform: 'uppercase',
                     }}>
-                      Kết quả 1 Set
+                      {isMultiSet ? `Best of 3 (${match.sets!.length} hiệp)` : 'Kết quả 1 Hiệp'}
                     </span>
+
+                    {/* Set-by-set breakdown if Best of 3 */}
+                    {isMultiSet && (
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 2,
+                        marginTop: 2,
+                      }}>
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
+                          {match.sets!.map((s, idx) => (
+                            <span 
+                              key={idx} 
+                              style={{ 
+                                fontSize: '0.72rem', 
+                                fontWeight: 700, 
+                                color: '#334155', 
+                                background: '#f1f5f9', 
+                                padding: '2px 6px', 
+                                borderRadius: 5,
+                                border: '1px solid #e2e8f0'
+                              }}
+                            >
+                              H{idx + 1}: {s.team1}-{s.team2}
+                            </span>
+                          ))}
+                        </div>
+                        <span style={{ fontSize: '0.66rem', color: '#94a3b8', fontWeight: 600 }}>
+                          Tổng điểm: {match.totalScoreTeam1} - {match.totalScoreTeam2}
+                        </span>
+                      </div>
+                    )}
 
                     {/* Centered Confirmation Count Pill */}
                     <button
