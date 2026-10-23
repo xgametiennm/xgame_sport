@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Avatar, MobileCard, MobilePage, PillToggle, PrimaryButton, ScreenHeader } from './MobileUi';
 import { buildMatchResult } from '../utils/buildMatchResult';
+import { roundRobinNote } from '../utils/roundRobin';
 import {
   appendMatches,
   busyAtSameTime,
@@ -30,6 +31,7 @@ import {
   hasResult,
   isLineupComplete,
   isManualPairing,
+  isRoundRobin,
   PlaySession,
   scheduledCounts,
   SessionMatch,
@@ -37,8 +39,15 @@ import {
 
 interface PlaySessionMobileProps {
   session: PlaySession;
+  // Club managers and whoever started the session may change the schedule and end it;
+  // everyone else only enters scores
+  canManage: boolean;
+  // Schedule changes (lineups, matches added or removed)
   onChange: (update: (session: PlaySession) => PlaySession) => void;
-  onEnd: () => void;
+  // Score of one match, saved on its own so people entering different matches never clash
+  onScore: (matchId: string, score1: number | null, score2: number | null) => void;
+  // Called with the round robin's code when one ends, so its results can be shown
+  onEnd: (roundRobinCode?: string) => void;
 }
 
 type SessionTab = 'matches' | 'stats' | 'members';
@@ -179,7 +188,7 @@ const ScoreStepper: React.FC<{ value: number | null; winning: boolean; onChange:
   );
 };
 
-export const PlaySessionMobile: React.FC<PlaySessionMobileProps> = ({ session, onChange, onEnd }) => {
+export const PlaySessionMobile: React.FC<PlaySessionMobileProps> = ({ session, canManage, onChange, onScore, onEnd }) => {
   const { players, selectedClub, setActiveTab, recordNewMatch } = usePickleball();
   const [tab, setTab] = useState<SessionTab>('matches');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -192,6 +201,7 @@ export const PlaySessionMobile: React.FC<PlaySessionMobileProps> = ({ session, o
   const { matches } = session;
   const perTeam = session.format === 'doubles' ? 2 : 1;
   const manual = isManualPairing(session);
+  const roundRobin = isRoundRobin(session);
   const dateLabel = new Date(`${session.date}T00:00`).toLocaleDateString('vi-VN');
   const courtsLabel = Array.from({ length: session.courts }, (_, i) => i + 1).join(', ');
 
@@ -257,6 +267,10 @@ export const PlaySessionMobile: React.FC<PlaySessionMobileProps> = ({ session, o
             team2: [team2[0], team2[1]],
             score1: m.score1!,
             score2: m.score2!,
+            // Tags the match as part of this round robin; its ranking is rebuilt from these notes
+            notes: roundRobin && session.eventName && session.eventCode
+              ? roundRobinNote(session.eventName, session.eventCode, m.round ?? session.rounds ?? 1, session.rounds ?? 1)
+              : undefined,
           }),
           isSubsequentMatch: true,
         });
@@ -272,14 +286,15 @@ export const PlaySessionMobile: React.FC<PlaySessionMobileProps> = ({ session, o
       setFinishing(false);
     }
 
-    onEnd();
+    onEnd(roundRobin && finished.length > 0 ? session.eventCode : undefined);
     if (finished.length > 0) {
       try {
         confetti({ particleCount: 70, spread: 60, origin: { y: 0.5 } });
       } catch {
         // ignore
       }
-      setActiveTab('matches');
+      // A round robin shows its own ranking; other sessions go to the match history
+      if (!roundRobin) setActiveTab('matches');
     }
   };
 
@@ -316,7 +331,7 @@ export const PlaySessionMobile: React.FC<PlaySessionMobileProps> = ({ session, o
   return (
     <MobilePage>
       <ScreenHeader
-        title="Trận đấu hôm nay"
+        title={roundRobin && session.eventName ? session.eventName : 'Trận đấu hôm nay'}
         onBack={() => setActiveTab('home')}
         right={
           <span style={{
@@ -381,7 +396,7 @@ export const PlaySessionMobile: React.FC<PlaySessionMobileProps> = ({ session, o
                 {matches.length} trận
               </span>
             </div>
-            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+            {canManage && <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
               <button
                 onClick={handleClearAll}
                 disabled={matches.length === 0}
@@ -411,7 +426,7 @@ export const PlaySessionMobile: React.FC<PlaySessionMobileProps> = ({ session, o
                 <Plus size={15} strokeWidth={3} />
                 <span>Thêm trận</span>
               </button>
-            </div>
+            </div>}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
@@ -424,8 +439,8 @@ export const PlaySessionMobile: React.FC<PlaySessionMobileProps> = ({ session, o
                     <PlayerSlot
                       key={slot}
                       player={id ? playerById.get(id) : undefined}
-                      editable={editing || manual}
-                      onPick={() => setPicker({ matchId: m.id, team: key, index: slot })}
+                      editable={canManage && (editing || manual)}
+                      onPick={() => canManage && setPicker({ matchId: m.id, team: key, index: slot })}
                     />
                   ))}
                 </div>
@@ -444,7 +459,7 @@ export const PlaySessionMobile: React.FC<PlaySessionMobileProps> = ({ session, o
                         color: '#475569',
                         whiteSpace: 'nowrap',
                       }}>
-                        TRẬN {index + 1} · {m.time}
+                        {m.round ? `VÒNG ${m.round} · ` : ''}TRẬN {index + 1} · {m.time}
                       </span>
                       {session.courts > 1 && (
                         <span style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 600, whiteSpace: 'nowrap' }}>
@@ -464,7 +479,7 @@ export const PlaySessionMobile: React.FC<PlaySessionMobileProps> = ({ session, o
                       }}>
                         {done ? 'Đã có kết quả' : 'Chưa thi đấu'}
                       </span>
-                      {!isLineupComplete(m) && (
+                      {canManage && !isLineupComplete(m) && (
                         <button
                           onClick={() => updateMatches((current) => fillMatch(current, m.id))}
                           title="Tự điền ngẫu nhiên các vị trí còn trống"
@@ -482,19 +497,21 @@ export const PlaySessionMobile: React.FC<PlaySessionMobileProps> = ({ session, o
                         style={{
                           ...iconButtonStyle(editing ? '#10b981' : '#f1f5f9', editing ? '#ffffff' : '#475569'),
                           // With manual pairing every position is always tappable, so there is no edit toggle
-                          display: manual ? 'none' : 'flex',
+                          display: manual || !canManage ? 'none' : 'flex',
                         }}
                       >
                         <Pencil size={14} />
                       </button>
-                      <button
-                        onClick={() => updateMatches((current) => current.matches.filter((x) => x.id !== m.id))}
-                        title="Xóa trận"
-                        aria-label="Xóa trận"
-                        style={iconButtonStyle('#fee2e2', '#dc2626')}
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {canManage && (
+                        <button
+                          onClick={() => updateMatches((current) => current.matches.filter((x) => x.id !== m.id))}
+                          title="Xóa trận"
+                          aria-label="Xóa trận"
+                          style={iconButtonStyle('#fee2e2', '#dc2626')}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -504,19 +521,19 @@ export const PlaySessionMobile: React.FC<PlaySessionMobileProps> = ({ session, o
                       <ScoreStepper
                         value={m.score1}
                         winning={done && m.score1! > m.score2!}
-                        onChange={(v) => patchMatch(m.id, { score1: v })}
+                        onChange={(v) => onScore(m.id, v, m.score2)}
                       />
                       <span style={{ fontWeight: 900, color: '#94a3b8' }}>:</span>
                       <ScoreStepper
                         value={m.score2}
                         winning={done && m.score2! > m.score1!}
-                        onChange={(v) => patchMatch(m.id, { score2: v })}
+                        onChange={(v) => onScore(m.id, m.score1, v)}
                       />
                     </div>
                     {renderTeam('team2')}
                   </div>
 
-                  {(editing || (manual && !isLineupComplete(m))) && (
+                  {canManage && (editing || (manual && !isLineupComplete(m))) && (
                     <div style={{ fontSize: '0.68rem', color: '#047857', textAlign: 'center', marginTop: 6 }}>
                       {manual ? 'Chạm vào từng vị trí để xếp người chơi.' : 'Chạm vào người chơi để đổi.'}
                     </div>
@@ -534,10 +551,16 @@ export const PlaySessionMobile: React.FC<PlaySessionMobileProps> = ({ session, o
             )}
           </div>
 
-          <PrimaryButton onClick={handleFinish} disabled={finishing}>
-            <Square size={18} fill="#ffffff" />
-            <span>{finishing ? 'Đang lưu kết quả...' : 'Kết thúc ngay'}</span>
-          </PrimaryButton>
+          {canManage ? (
+            <PrimaryButton onClick={handleFinish} disabled={finishing}>
+              <Square size={18} fill="#ffffff" />
+              <span>{finishing ? 'Đang lưu kết quả...' : 'Kết thúc ngay'}</span>
+            </PrimaryButton>
+          ) : (
+            <MobileCard style={{ textAlign: 'center', padding: 12, fontSize: '0.76rem', color: '#475569' }}>
+              Bạn có thể nhập tỉ số các trận. Người tạo buổi đấu hoặc quản trị viên CLB sẽ sửa lịch và kết thúc buổi đấu.
+            </MobileCard>
+          )}
 
           <div style={{
             display: 'flex',
@@ -557,8 +580,9 @@ export const PlaySessionMobile: React.FC<PlaySessionMobileProps> = ({ session, o
                 ) : (
                   <li>Bạn có thể thêm trận để hệ thống tự chia cặp ngẫu nhiên.</li>
                 )}
-                <li>Nhập tỉ số bất kỳ lúc nào; kết quả được lưu vào CLB khi bạn kết thúc.</li>
-                <li>Có thể xóa một trận hoặc xóa toàn bộ lịch thi đấu.</li>
+                <li>Mọi thành viên CLB đều xem và nhập tỉ số được; màn hình tự cập nhật vài giây một lần.</li>
+                <li>Kết quả được lưu vào CLB khi kết thúc buổi đấu.</li>
+                {canManage && <li>Có thể xóa một trận hoặc xóa toàn bộ lịch thi đấu.</li>}
               </ul>
             </div>
           </div>

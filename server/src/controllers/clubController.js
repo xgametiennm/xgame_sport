@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const db = require('../config/db');
-const { newId } = require('../middleware/auth');
+const { newId, isManager } = require('../middleware/auth');
 const { happyAvatar } = require('../utils/avatar');
 
 // No 0/O or 1/I, so the code is easy to read aloud and type
@@ -203,7 +203,55 @@ async function deleteClub(req, res) {
   }
 }
 
-// The club's in-progress play session (schedule and scores entered so far)
+// The club's in-progress play session (schedule and scores entered so far).
+//
+// Several people follow one session from their own devices, so it is changed in two ways:
+// - Scores go through updateSessionScore, one match at a time, so people entering
+//   different matches at once never overwrite each other.
+// - The schedule (lineups, added or removed matches) is replaced as a whole by saveSession,
+//   only by the club's managers or whoever started the session. Each replacement must name
+//   the version it was based on; a stale one is refused so an organiser cannot undo
+//   another's changes without seeing them. Scores in a replacement are ignored for matches
+//   the server already has: those only change through updateSessionScore.
+
+const MAX_SCORE = 30;
+
+const canManageSession = (req, session) =>
+  isManager(req.membership) || (!!session && session.createdByUserId === req.user.id);
+
+async function loadSessionForUpdate(client, clubId) {
+  const result = await client.query('SELECT data FROM play_sessions WHERE club_id = $1 FOR UPDATE', [clubId]);
+  return result.rows[0] ? result.rows[0].data : null;
+}
+
+async function storeSession(client, clubId, session) {
+  await client.query(`
+    INSERT INTO play_sessions (club_id, data, updated_at)
+    VALUES ($1, $2, NOW())
+    ON CONFLICT (club_id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
+  `, [clubId, JSON.stringify(session)]);
+}
+
+// Every write bumps `revision`, so a client can tell an old response from a newer one
+const nextRevision = (session) => ((session && session.revision) || 0) + 1;
+
+// Runs fn(client) in a transaction; fn returns [status, body]
+async function inTransaction(res, label, fn) {
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    const [status, body] = await fn(client);
+    await client.query(status < 400 ? 'COMMIT' : 'ROLLBACK');
+    res.status(status).json(body);
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(`${label} error:`, err);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  } finally {
+    client.release();
+  }
+}
+
 async function getSession(req, res) {
   try {
     const result = await db.query('SELECT data FROM play_sessions WHERE club_id = $1', [req.params.id]);
@@ -215,31 +263,85 @@ async function getSession(req, res) {
 }
 
 async function saveSession(req, res) {
-  try {
-    const session = req.body;
-    if (!session || !Array.isArray(session.matches) || !Array.isArray(session.memberIds)) {
-      return res.status(400).json({ success: false, error: 'Dữ liệu buổi đấu không hợp lệ' });
-    }
-    await db.query(`
-      INSERT INTO play_sessions (club_id, data, updated_at)
-      VALUES ($1, $2, NOW())
-      ON CONFLICT (club_id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
-    `, [req.params.id, JSON.stringify(session)]);
-    res.json({ success: true });
-  } catch (err) {
-    console.error('saveSession error:', err);
-    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  const incoming = req.body;
+  if (!incoming || !Array.isArray(incoming.matches) || !Array.isArray(incoming.memberIds)) {
+    return res.status(400).json({ success: false, error: 'Dữ liệu buổi đấu không hợp lệ' });
   }
+
+  await inTransaction(res, 'saveSession', async (client) => {
+    const current = await loadSessionForUpdate(client, req.params.id);
+
+    if (current) {
+      // A stale copy first: this also covers starting a session while another one is running
+      if ((incoming.version || 0) !== (current.version || 0)) {
+        return [409, {
+          success: false,
+          conflict: true,
+          error: 'Lịch thi đấu vừa được người khác thay đổi. Màn hình đã tải lại bản mới nhất, vui lòng thao tác lại.',
+          data: current,
+        }];
+      }
+      if (!canManageSession(req, current)) {
+        return [403, { success: false, error: 'Chỉ chủ CLB, quản trị viên hoặc người tạo buổi đấu mới sửa được lịch thi đấu' }];
+      }
+    }
+
+    const savedScores = new Map((current ? current.matches : []).map((m) => [m.id, m]));
+    const session = {
+      ...incoming,
+      matches: incoming.matches.map((m) => {
+        const saved = savedScores.get(m.id);
+        return saved ? { ...m, score1: saved.score1, score2: saved.score2 } : m;
+      }),
+      // Who started the session is decided by the server, not by the client
+      createdByUserId: current ? current.createdByUserId : req.user.id,
+      version: (current ? current.version || 0 : 0) + 1,
+      revision: nextRevision(current),
+    };
+    await storeSession(client, req.params.id, session);
+    return [200, { success: true, data: session }];
+  });
+}
+
+// Any member of the club may enter a score
+async function updateSessionScore(req, res) {
+  const parse = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Number(value);
+    return Number.isInteger(n) && n >= 0 && n <= MAX_SCORE ? n : undefined;
+  };
+  const score1 = parse(req.body && req.body.score1);
+  const score2 = parse(req.body && req.body.score2);
+  if (score1 === undefined || score2 === undefined) {
+    return res.status(400).json({ success: false, error: 'Tỉ số không hợp lệ' });
+  }
+
+  await inTransaction(res, 'updateSessionScore', async (client) => {
+    const session = await loadSessionForUpdate(client, req.params.id);
+    if (!session) {
+      return [404, { success: false, error: 'Buổi đấu đã kết thúc' }];
+    }
+    const match = session.matches.find((m) => m.id === req.params.matchId);
+    if (!match) {
+      return [404, { success: false, error: 'Trận này đã bị xóa khỏi lịch thi đấu', data: session }];
+    }
+    match.score1 = score1;
+    match.score2 = score2;
+    session.revision = nextRevision(session);
+    await storeSession(client, req.params.id, session);
+    return [200, { success: true, data: session }];
+  });
 }
 
 async function deleteSession(req, res) {
-  try {
-    await db.query('DELETE FROM play_sessions WHERE club_id = $1', [req.params.id]);
-    res.json({ success: true });
-  } catch (err) {
-    console.error('deleteSession error:', err);
-    res.status(500).json({ success: false, error: 'Internal Server Error' });
-  }
+  await inTransaction(res, 'deleteSession', async (client) => {
+    const current = await loadSessionForUpdate(client, req.params.id);
+    if (current && !canManageSession(req, current)) {
+      return [403, { success: false, error: 'Chỉ chủ CLB, quản trị viên hoặc người tạo buổi đấu mới kết thúc được buổi đấu' }];
+    }
+    await client.query('DELETE FROM play_sessions WHERE club_id = $1', [req.params.id]);
+    return [200, { success: true }];
+  });
 }
 
 // Club's tournament state (setup, draw, group stage & knockout bracket)
@@ -264,6 +366,17 @@ async function saveTournament(req, res) {
       VALUES ($1, $2, NOW())
       ON CONFLICT (club_id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
     `, [req.params.id, JSON.stringify(tournament)]);
+
+    // A finished tournament is also kept in the club's history (later edits replace that copy),
+    // so starting a new tournament does not lose its results
+    if (tournament.currentPhase === 'finished' && tournament.id) {
+      await db.query(`
+        INSERT INTO tournament_history (id, club_id, data, finished_at)
+        VALUES ($1, $2, $3, NOW())
+        ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data
+        WHERE tournament_history.club_id = EXCLUDED.club_id
+      `, [String(tournament.id), req.params.id, JSON.stringify(tournament)]);
+    }
     res.json({ success: true });
   } catch (err) {
     console.error('saveTournament error:', err);
@@ -281,6 +394,34 @@ async function deleteTournament(req, res) {
   }
 }
 
+// Finished tournaments of the club, newest first
+async function getTournamentHistory(req, res) {
+  try {
+    const result = await db.query(
+      'SELECT data, finished_at FROM tournament_history WHERE club_id = $1 ORDER BY finished_at DESC LIMIT 100',
+      [req.params.id]
+    );
+    res.json({
+      success: true,
+      data: result.rows.map((row) => ({ tournament: row.data, finishedAt: row.finished_at })),
+    });
+  } catch (err) {
+    console.error('getTournamentHistory error:', err);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
+// Managers only (checked by the route)
+async function deleteTournamentHistory(req, res) {
+  try {
+    await db.query('DELETE FROM tournament_history WHERE id = $1 AND club_id = $2', [req.params.tournamentId, req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('deleteTournamentHistory error:', err);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+}
+
 module.exports = {
   getClubs,
   createClub,
@@ -289,8 +430,11 @@ module.exports = {
   deleteClub,
   getSession,
   saveSession,
+  updateSessionScore,
   deleteSession,
   getTournament,
   saveTournament,
   deleteTournament,
+  getTournamentHistory,
+  deleteTournamentHistory,
 };

@@ -296,25 +296,27 @@ h1 {
 }
 
 /* Tab Navigation - Light Pill Bar */
+/* Every tab stays visible: on a narrow window the bar wraps onto a second row instead of scrolling */
 .nav-tab-bar {
   display: flex;
-  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
   background: #ffffff;
   padding: 5px;
-  border-radius: var(--radius-full);
+  border-radius: 22px;
   border: 1px solid var(--card-border);
   box-shadow: var(--shadow-sm);
   max-width: 100%;
-  overflow-x: auto;
 }
 
 .nav-tab-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 18px;
+  gap: 7px;
+  padding: 8px 14px;
   border-radius: var(--radius-full);
-  font-size: 0.88rem;
+  font-size: 0.86rem;
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--text-muted);

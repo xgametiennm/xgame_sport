@@ -1,9 +1,11 @@
 import { GameFormat } from '../types/pickleball';
+import { buildRoundRobin } from './roundRobin';
 
 export type PlayMode = 'friendly' | 'tournament';
 
 // 'auto': the system pairs members at random. 'manual': the organiser builds every match by hand.
-export type PairingMode = 'auto' | 'manual';
+// 'roundRobin': doubles where every member partners every other member once (see roundRobin.ts).
+export type PairingMode = 'auto' | 'manual' | 'roundRobin';
 
 export interface SessionMatch {
   id: string;
@@ -13,6 +15,7 @@ export interface SessionMatch {
   team2: (string | null)[];
   score1: number | null;
   score2: number | null;
+  round?: number; // round robin only
 }
 
 export interface PlaySession {
@@ -25,6 +28,15 @@ export interface PlaySession {
   endTime: string;
   courts: number;
   matches: SessionMatch[];
+  // Round robin only: the event's name, the code its saved matches carry, and its round count
+  eventName?: string;
+  eventCode?: string;
+  rounds?: number;
+  // Set by the server: who started the session (they may manage it like a club manager)
+  // and a counter bumped on every schedule change, used to refuse stale schedule saves
+  createdByUserId?: string;
+  version?: number;
+  revision?: number; // bumped by every write, scores included
 }
 
 // ~12 minutes of play plus a short break between matches
@@ -33,6 +45,8 @@ export const SLOT_MINUTES = 15;
 export const playersPerTeam = (format: GameFormat): number => (format === 'doubles' ? 2 : 1);
 
 export const isManualPairing = (session: PlaySession): boolean => session.pairing === 'manual';
+
+export const isRoundRobin = (session: PlaySession): boolean => session.pairing === 'roundRobin';
 
 export const addMinutes = (time: string, minutes: number): string => {
   const [h, m] = time.split(':').map(Number);
@@ -141,4 +155,34 @@ export function fillMatch(session: PlaySession, matchId: string): SessionMatch[]
     const fill = (team: (string | null)[]) => team.map((id) => id ?? picked.shift() ?? null);
     return { ...match, team1: fill(match.team1), team2: fill(match.team2) };
   });
+}
+
+/**
+ * The full round robin schedule for a session's members. Each round is played across the
+ * courts; a round with more matches than courts takes several time slots.
+ */
+export function roundRobinMatches(session: PlaySession): { matches: SessionMatch[]; rounds: number } {
+  const plan = buildRoundRobin(session.memberIds);
+  const courts = Math.max(1, session.courts);
+  const matches: SessionMatch[] = [];
+  let slot = 0;
+
+  for (let round = 1; round <= plan.rounds; round++) {
+    const ofRound = plan.matches.filter((m) => m.round === round);
+    ofRound.forEach((m, index) => {
+      if (index > 0 && index % courts === 0) slot += 1;
+      matches.push({
+        id: `sm-${Date.now()}-${matches.length}`,
+        time: addMinutes(session.startTime, slot * SLOT_MINUTES),
+        court: (index % courts) + 1,
+        team1: [...m.team1],
+        team2: [...m.team2],
+        score1: null,
+        score2: null,
+        round,
+      });
+    });
+    if (ofRound.length > 0) slot += 1;
+  }
+  return { matches, rounds: plan.rounds };
 }

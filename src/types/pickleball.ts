@@ -279,3 +279,92 @@ export interface TournamentData {
 }
 
 
+
+// ---------------------------------------------------------------------------
+// Club fund. Amounts are whole VND.
+
+export interface FundContribution {
+  id: string;
+  playerId: string;
+  amount: number;
+  paidAt: string; // yyyy-mm-dd
+  note: string;
+  recordedByName: string | null;
+}
+
+export interface FundCampaign {
+  id: string;
+  name: string;
+  amountPerMember: number;
+  dueDate: string | null; // yyyy-mm-dd
+  note: string;
+  createdAt: string;
+  contributions: FundContribution[];
+}
+
+export interface FundReceipt {
+  id: string;
+  mime: string;
+  fileName: string;
+  size: number;
+}
+
+export type FundExpenseCategory = 'court' | 'balls' | 'drinks' | 'prizes' | 'other';
+
+export interface FundExpense {
+  id: string;
+  title: string;
+  category: FundExpenseCategory;
+  amount: number;
+  spentAt: string; // yyyy-mm-dd
+  note: string;
+  createdByName: string | null;
+  createdAt: string;
+  receipts: FundReceipt[];
+}
+
+export interface FundSettings {
+  openingBalance: number; // money in the fund before anything was recorded here
+  openingDate: string | null; // yyyy-mm-dd
+  bankBin: string; // NAPAS bank id, for VietQR codes
+  bankName: string;
+  accountNo: string;
+  accountName: string;
+  // Set when the treasurer uploaded a payment QR picture (its upload time, for cache busting)
+  qrImageVersion?: number | null;
+}
+
+// A member's "I have transferred" report
+export interface FundClaim {
+  id: string;
+  campaignId: string;
+  playerId: string;
+  amount: number;
+  transferredAt: string; // yyyy-mm-dd
+  note: string;
+  proofMime: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewedByName: string | null;
+  reviewedAt: string | null;
+  reviewNote: string;
+  createdAt: string;
+}
+
+export interface FundOverview {
+  totals: { opening: number; income: number; expense: number; balance: number };
+  settings: FundSettings;
+  // Managers get every pending report; members only their own
+  claims: FundClaim[];
+  campaigns: FundCampaign[];
+  expenses: FundExpense[];
+}
+
+export interface FundLogEntry {
+  id: string;
+  actorName: string;
+  action: string; // e.g. 'expense.update', 'contribution.create'
+  targetType: 'campaign' | 'contribution' | 'expense' | 'receipt' | 'settings' | 'claim';
+  summary: string;
+  changes: { field: string; from: string; to: string }[];
+  createdAt: string;
+}

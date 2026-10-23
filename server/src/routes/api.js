@@ -7,6 +7,7 @@ const matchController = require('../controllers/matchController');
 const authController = require('../controllers/authController');
 const liveController = require('../controllers/liveController');
 const notificationController = require('../controllers/notificationController');
+const fundController = require('../controllers/fundController');
 const { requireAuth, requireClubRole } = require('../middleware/auth');
 
 // Every club route needs a signed-in user who belongs to that club;
@@ -44,12 +45,43 @@ router.delete('/clubs/:id', memberOf(clubInPath), clubController.deleteClub);
 // In-progress play session of a club
 router.get('/clubs/:id/session', memberOf(clubInPath), clubController.getSession);
 router.put('/clubs/:id/session', memberOf(clubInPath), clubController.saveSession);
+router.patch('/clubs/:id/session/matches/:matchId', memberOf(clubInPath), clubController.updateSessionScore);
 router.delete('/clubs/:id/session', memberOf(clubInPath), clubController.deleteSession);
 
 // Tournament of a club (Group stage, Knockout bracket, Pairing, Random spin)
 router.get('/clubs/:id/tournament', memberOf(clubInPath), clubController.getTournament);
 router.put('/clubs/:id/tournament', memberOf(clubInPath), clubController.saveTournament);
 router.delete('/clubs/:id/tournament', memberOf(clubInPath), clubController.deleteTournament);
+router.get('/clubs/:id/tournament-history', memberOf(clubInPath), clubController.getTournamentHistory);
+
+// Club fund: members see it, managers keep it
+const FUND = '/clubs/:id/fund';
+router.get(FUND, memberOf(clubInPath), fundController.getFund);
+router.get(`${FUND}/logs`, memberOf(clubInPath), fundController.getLogs);
+router.put(`${FUND}/settings`, managerOf(clubInPath), fundController.saveSettings);
+// The treasurer's payment QR picture: managers upload it, every member can see it
+router.put(`${FUND}/settings/qr`, managerOf(clubInPath), fundController.uploadQrImage);
+router.delete(`${FUND}/settings/qr`, managerOf(clubInPath), fundController.deleteQrImage);
+router.get(`${FUND}/settings/qr`, memberOf(clubInPath), fundController.getQrImage);
+// Members report their own transfers; managers confirm or reject them
+router.post(`${FUND}/campaigns/:campaignId/claims`, memberOf(clubInPath), fundController.createClaim);
+router.delete(`${FUND}/claims/:claimId`, memberOf(clubInPath), fundController.cancelClaim);
+router.post(`${FUND}/claims/:claimId/approve`, managerOf(clubInPath), fundController.approveClaim);
+router.post(`${FUND}/claims/:claimId/reject`, managerOf(clubInPath), fundController.rejectClaim);
+router.get(`${FUND}/claims/:claimId/proof`, memberOf(clubInPath), fundController.getClaimProof);
+router.post(`${FUND}/campaigns`, managerOf(clubInPath), fundController.createCampaign);
+router.patch(`${FUND}/campaigns/:campaignId`, managerOf(clubInPath), fundController.updateCampaign);
+router.delete(`${FUND}/campaigns/:campaignId`, managerOf(clubInPath), fundController.deleteCampaign);
+router.put(`${FUND}/campaigns/:campaignId/contributions/:playerId`, managerOf(clubInPath), fundController.setContribution);
+router.delete(`${FUND}/campaigns/:campaignId/contributions/:playerId`, managerOf(clubInPath), fundController.deleteContribution);
+router.post(`${FUND}/expenses`, managerOf(clubInPath), fundController.createExpense);
+router.patch(`${FUND}/expenses/:expenseId`, managerOf(clubInPath), fundController.updateExpense);
+router.delete(`${FUND}/expenses/:expenseId`, managerOf(clubInPath), fundController.deleteExpense);
+router.post(`${FUND}/expenses/:expenseId/receipts`, managerOf(clubInPath), fundController.addReceipt);
+// No file extension in the path: nginx caches *.jpg, *.png... as public static assets
+router.get(`${FUND}/receipts/:receiptId`, memberOf(clubInPath), fundController.getReceipt);
+router.delete(`${FUND}/receipts/:receiptId`, managerOf(clubInPath), fundController.deleteReceipt);
+router.delete('/clubs/:id/tournament-history/:tournamentId', managerOf(clubInPath), clubController.deleteTournamentHistory);
 
 
 // Members

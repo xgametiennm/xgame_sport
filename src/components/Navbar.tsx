@@ -18,7 +18,8 @@ import {
   Star,
   Medal,
   Bell,
-  CheckCheck
+  CheckCheck,
+  Wallet
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -117,6 +118,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenProfile, onCreateClub, onJ
       icon: <Activity size={18} />,
     },
     {
+      tab: 'fund',
+      labelVi: 'Quỹ CLB',
+      labelEn: 'Club Fund',
+      icon: <Wallet size={18} />,
+    },
+    {
       tab: 'profile',
       labelVi: 'Cá Nhân',
       labelEn: 'Profile',
@@ -140,11 +147,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenProfile, onCreateClub, onJ
       borderBottom: '1px solid #e2e8f0',
       boxShadow: '0 1px 4px rgba(0, 0, 0, 0.04)',
     }}>
-      {/* Top Banner with Brand, Club Selector & Profile */}
+      {/* Top Banner with Brand, Club Selector & Profile (full screen width) */}
       <div style={{
-        maxWidth: 1280,
-        margin: '0 auto',
-        padding: '12px 16px',
+        padding: '12px 24px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -773,11 +778,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenProfile, onCreateClub, onJ
         </div>
       </div>
 
-      {/* Main Tab Navigation Bar */}
+      {/* Main Tab Navigation Bar (full screen width; wraps rather than scrolls) */}
       <div style={{
-        maxWidth: 1280,
-        margin: '0 auto',
-        padding: '0 16px 10px',
+        padding: '0 24px 10px',
         display: 'flex',
         justifyContent: 'center',
       }}>

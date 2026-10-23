@@ -110,3 +110,47 @@ Bạn có thể đăng ký tài khoản mới bằng Email bất kỳ hoặc s�
 - **Email**: `nguyen.anh@xgame.vn` | **Mật khẩu**: `pickleball2026`
 - **Email**: `tran.binh@xgame.vn` | **Mật khẩu**: `pickleball2026`
 - **Email**: `le.cuong@xgame.vn` | **Mật khẩu**: `pickleball2026`
+
+---
+
+## 🛠️ Vận Hành & Xử Lý Sự Cố
+
+### Lấy lại quyền Chủ CLB
+
+Một CLB có thể có **nhiều chủ CLB**. Chỉ chủ CLB mới cấp hoặc thu hồi được quyền chủ CLB, và CLB luôn phải còn ít nhất một chủ. Quản trị viên **không tự nâng mình lên chủ CLB được**.
+
+Trường hợp hay gặp: bạn đã trao quyền chủ CLB cho người khác ở bản cũ (khi đó mỗi CLB chỉ có một chủ, người trao bị hạ xuống Quản trị viên), giờ muốn lấy lại.
+
+#### Cách 1 (nên dùng): nhờ chủ CLB hiện tại cấp lại
+
+Người đang là chủ CLB vào **Cài đặt CLB → Danh sách thành viên**, ở dòng tên bạn chọn quyền **Chủ CLB** (hoặc **⋮ → Đặt làm chủ CLB**). Cả hai cùng là chủ CLB, không ai bị hạ quyền. Sau đó, nếu cần, bạn có thể đổi quyền của người kia ở cùng chỗ.
+
+#### Cách 2: sửa trực tiếp trong database (khi không liên lạc được chủ CLB hiện tại)
+
+Chạy trên server có container `xgame_postgres`. Tên database và user lấy theo file `.env` (mặc định `xgame_db` / `xgame_admin`):
+
+```bash
+docker exec -it xgame_postgres psql -U xgame_admin -d xgame_db
+```
+
+Trong `psql`:
+
+```sql
+-- 1. Tìm id của CLB
+SELECT id, name FROM clubs;
+
+-- 2. Xem các thành viên có tài khoản của CLB đó, tìm dòng của bạn theo email
+SELECT p.id, p.name, p.role, u.email
+FROM players p JOIN users u ON u.id = p.user_id
+WHERE p.club_id = '<id CLB>' AND p.removed_at IS NULL
+ORDER BY p.role, p.name;
+
+-- 3. Cấp lại quyền chủ CLB cho đúng dòng của bạn (cột id, dạng p-...)
+UPDATE players SET role = 'owner', updated_at = NOW()
+WHERE id = '<id dòng của bạn>' AND club_id = '<id CLB>';
+```
+
+- Bước 3 phải báo **`UPDATE 1`**. Nếu ra `UPDATE 0` thì id bị nhập sai, chưa có gì thay đổi.
+- Chạy lại câu ở bước 2 để kiểm tra dòng của bạn đã là `owner`, rồi gõ `\q` để thoát và tải lại app.
+
+> ⚠️ Kiểm tra kỹ id trước khi chạy `UPDATE`. Sửa trực tiếp trong database không để lại dấu vết trong app (chủ CLB hiện tại không nhận được thông báo), nên hãy báo cho họ biết.

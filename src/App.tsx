@@ -16,6 +16,7 @@ import { PlayerProfileView } from './components/PlayerProfileView';
 import { PlayMobile } from './components/PlayMobile';
 import { ClubSettingsMobile } from './components/ClubSettingsMobile';
 import { TournamentGenerator } from './components/TournamentGenerator';
+import { FundManager } from './components/FundManager';
 
 const MainContent: React.FC = () => {
   const { activeTab, setActiveTab, lang, viewMode, myPlayer, viewedPlayer, openPlayer, closePlayer } = usePickleball();
@@ -89,6 +90,7 @@ const MainContent: React.FC = () => {
             {activeTab === 'scoreboard' && <CourtsideScoreboard />}
             {activeTab === 'play' && <PlayMobile />}
             {activeTab === 'clubSettings' && <ClubSettingsMobile />}
+            {activeTab === 'fund' && <FundManager />}
             {/* Always the signed-in account's own record, never another member's */}
             {activeTab === 'profile' && (
               myPlayer ? (

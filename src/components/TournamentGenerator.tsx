@@ -31,6 +31,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { TournamentHistory } from './TournamentHistory';
 import {
   createId,
   shortPlayerName,
@@ -51,6 +52,8 @@ export const TournamentGenerator: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [tournament, setTournament] = useState<TournamentData | null>(null);
   const [activeTab, setActiveStageTab] = useState<'setup' | 'pairing' | 'groups' | 'knockout' | 'podium'>('setup');
+  // The tournament being run, or the list of finished ones
+  const [view, setView] = useState<'current' | 'history'>('history');
 
   // Setup form states
   const [tournamentName, setTournamentName] = useState<string>(() => `${selectedClub.name} - Giải Tranh Cúp Vô Địch`);
@@ -575,50 +578,56 @@ export const TournamentGenerator: React.FC = () => {
 
   return (
     <div style={{ maxWidth: 1240, margin: '0 auto', padding: '20px 16px 80px' }}>
-      {/* 1. TOP HEADER BANNER */}
-      <div className="hero-gradient card" style={{ marginBottom: 20, padding: '24px 20px', borderRadius: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <span className="badge badge-neon" style={{ background: '#d9f99d', color: '#365314', border: '1px solid #bef264' }}>
-                <Trophy size={13} /> GIẢI ĐẤU CLB
-              </span>
-              <span className="badge badge-court" style={{ background: '#d1fae5', color: '#065f46' }}>
-                {selectedClub.name}
-              </span>
-            </div>
-            <h1 style={{ fontSize: '1.8rem', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.02em', margin: 0 }}>
-              {tournament ? tournament.name : 'Thi Đấu & Tổ Chức Giải CLB'}
-            </h1>
-            <p style={{ color: 'rgba(255, 255, 255, 0.9)', fontSize: '0.86rem', marginTop: 4, maxWidth: 680 }}>
-              Hỗ trợ sắp xếp cặp đấu, quay random bốc thăm ngẫu nhiên, thi đấu vòng bảng tính điểm và sơ đồ loại trực tiếp (Knockout Bracket) chuyên nghiệp.
-            </p>
-          </div>
-
-          {tournament && isManager && (
+      {/* Finished tournaments first, then the one being run */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+        <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: 4, borderRadius: 12, gap: 4 }}>
+          {([
+            { value: 'history', label: 'Giải đã thi đấu' },
+            { value: 'current', label: tournament ? 'Giải đang diễn ra' : 'Tạo giải mới' },
+          ] as const).map((opt) => (
             <button
-              onClick={handleResetTournament}
-              className="btn-secondary"
+              key={opt.value}
+              onClick={() => setView(opt.value)}
               style={{
-                background: 'rgba(255, 255, 255, 0.15)',
-                color: '#ffffff',
-                border: '1px solid rgba(255, 255, 255, 0.3)',
                 padding: '8px 16px',
-                borderRadius: 999,
-                fontSize: '0.82rem',
-                fontWeight: 700,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
+                borderRadius: 9,
+                border: 'none',
+                fontSize: '0.84rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                background: view === opt.value ? '#0d5e46' : 'transparent',
+                color: view === opt.value ? '#ffffff' : '#64748b',
               }}
             >
-              <Trash2 size={15} />
-              <span>Tạo Giải Mới</span>
+              {opt.label}
             </button>
-          )}
+          ))}
         </div>
+
+        {view === 'current' && tournament && isManager && (
+          <button
+            onClick={handleResetTournament}
+            style={{
+              background: '#ffffff',
+              color: '#dc2626',
+              border: '1px solid #fecaca',
+              padding: '8px 16px',
+              borderRadius: 999,
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              cursor: 'pointer',
+            }}
+          >
+            <Trash2 size={15} />
+            <span>Tạo Giải Mới</span>
+          </button>
+        )}
       </div>
 
+      {view === 'history' ? <TournamentHistory /> : (<>
       {/* 2. STAGE NAVIGATION TABS */}
       <div style={{
         display: 'flex',
@@ -2368,6 +2377,7 @@ export const TournamentGenerator: React.FC = () => {
           </div>
         </div>
       )}
+      </>)}
     </div>
   );
 };

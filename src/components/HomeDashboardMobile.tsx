@@ -416,6 +416,29 @@ export const HomeDashboardMobile: React.FC<HomeDashboardMobileProps> = ({ onSele
         <ChevronRight size={18} color="#bef264" />
       </MobileCard>
 
+      {/* 2.6 QUICK ACCESS TO CLUB FUND */}
+      <MobileCard
+        onClick={() => setActiveTab('fund')}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '12px 14px',
+          marginBottom: 18,
+          borderRadius: 16,
+          cursor: 'pointer',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: '1.6rem' }}>💰</span>
+          <div>
+            <div style={{ fontSize: '0.88rem', fontWeight: 900, color: '#0f172a' }}>Quỹ CLB</div>
+            <div style={{ fontSize: '0.7rem', color: '#64748b' }}>Tổng quỹ, các đợt thu, chi tiêu & hóa đơn</div>
+          </div>
+        </div>
+        <ChevronRight size={18} color="#059669" />
+      </MobileCard>
+
       {/* 3. SEASON AWARDS */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <h2 style={{ fontSize: '1.05rem', fontWeight: 900, color: '#0f172a' }}>Danh hiệu mùa giải</h2>

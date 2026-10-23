@@ -5,7 +5,7 @@ import { useAuth } from './AuthContext';
 import { ClubOnboarding } from '../components/ClubOnboarding';
 import { ALL_DAYS, MatchDayFilter } from '../utils/matchDayFilter';
 
-export type AppTab = 'home' | 'members' | 'standings' | 'matches' | 'calculator' | 'scoreboard' | 'tournament' | 'guide' | 'profile' | 'play' | 'clubSettings';
+export type AppTab = 'home' | 'members' | 'standings' | 'matches' | 'calculator' | 'scoreboard' | 'tournament' | 'guide' | 'profile' | 'play' | 'clubSettings' | 'fund';
 export type ViewMode = 'desktop' | 'mobile';
 
 // All club data lives on the server and is scoped to the signed-in account:
@@ -67,7 +67,7 @@ const CLUB_QUERY_PARAM = 'club';
 const JOIN_QUERY_PARAM = 'join';
 const TAB_QUERY_PARAM = 'tab';
 
-const APP_TABS: AppTab[] = ['home', 'members', 'standings', 'matches', 'calculator', 'scoreboard', 'tournament', 'guide', 'profile', 'play', 'clubSettings'];
+const APP_TABS: AppTab[] = ['home', 'members', 'standings', 'matches', 'calculator', 'scoreboard', 'tournament', 'guide', 'profile', 'play', 'clubSettings', 'fund'];
 
 // What each browser history entry of the app holds
 interface NavState {
