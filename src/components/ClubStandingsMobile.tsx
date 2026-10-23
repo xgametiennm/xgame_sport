@@ -3,6 +3,9 @@ import { usePickleball } from '../context/PickleballContext';
 import { Player } from '../types/pickleball';
 import { Trophy, TrendingUp, Search } from 'lucide-react';
 import { LeaderboardTable, MobilePage, PillToggle } from './MobileUi';
+import { MatchDayFilterBar } from './MatchDayFilterBar';
+import { formatDayKey, matchesOnDay, selectedDayKey } from '../utils/matchDayFilter';
+import { playersWithRecordIn } from '../utils/playerStats';
 
 interface ClubStandingsMobileProps {
   onOpenRecordMatch: () => void;
@@ -10,13 +13,24 @@ interface ClubStandingsMobileProps {
 }
 
 export const ClubStandingsMobile: React.FC<ClubStandingsMobileProps> = ({ onSelectPlayer }) => {
-  const { players } = usePickleball();
+  const { players, matches, matchDayFilter } = usePickleball();
   const [activeFilter, setActiveFilter] = useState<'wins' | 'rating'>('wins');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // With a day picked, only that day's doubles matches count and only those who played are listed
+  const dayKey = selectedDayKey(matchDayFilter);
+  const dayMatches = useMemo(
+    () => matchesOnDay(matches, dayKey).filter((m) => m.format === 'doubles'),
+    [matches, dayKey]
+  );
+  const rankedPlayers = useMemo(
+    () => (dayKey ? playersWithRecordIn(players, dayMatches) : players),
+    [players, dayMatches, dayKey]
+  );
+
   // Sort players by total wins (winsDoubles) or by DUPR rating with tie-breaker
   const sortedPlayers = useMemo(() => {
-    const list = players.filter((p) =>
+    const list = rankedPlayers.filter((p) =>
       !searchQuery.trim() || p.name.toLowerCase().includes(searchQuery.toLowerCase().trim())
     );
     if (activeFilter === 'wins') {
@@ -31,7 +45,7 @@ export const ClubStandingsMobile: React.FC<ClubStandingsMobileProps> = ({ onSele
       (b.winsDoubles - a.winsDoubles) ||
       ((b.pointDifferential || 0) - (a.pointDifferential || 0))
     );
-  }, [players, activeFilter, searchQuery]);
+  }, [rankedPlayers, activeFilter, searchQuery]);
 
   return (
     <MobilePage>
@@ -41,7 +55,9 @@ export const ClubStandingsMobile: React.FC<ClubStandingsMobileProps> = ({ onSele
             Bảng xếp hạng (Đôi)
           </h1>
           <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 2 }}>
-            Thể thức Đôi 2v2 tiêu chuẩn CLB
+            {dayKey
+              ? `Ngày ${formatDayKey(dayKey)} · ${dayMatches.length} trận đôi`
+              : 'Thể thức Đôi 2v2 tiêu chuẩn CLB'}
           </div>
         </div>
         <PillToggle
@@ -52,6 +68,10 @@ export const ClubStandingsMobile: React.FC<ClubStandingsMobileProps> = ({ onSele
             { value: 'rating', label: 'Rating DUPR', icon: <TrendingUp size={13} /> },
           ]}
         />
+      </div>
+
+      <div style={{ marginBottom: 10 }}>
+        <MatchDayFilterBar compact />
       </div>
 
       {/* Search Input for Mobile */}

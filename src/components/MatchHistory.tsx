@@ -29,6 +29,7 @@ import { useAuth } from '../context/AuthContext';
 import { EditMatchModal } from './EditMatchModal';
 import { MatchConfirmationModal } from './MatchConfirmationModal';
 import { MatchResult } from '../types/pickleball';
+import { ALL_DAYS, MatchDayMode } from '../utils/matchDayFilter';
 
 interface MatchHistoryProps {
   onOpenRecordMatch: () => void;
@@ -39,7 +40,7 @@ const PAGE_SIZE = 15;
 
 export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, onSelectPlayer }) => {
   const { currentUser } = useAuth();
-  const { matches, selectedClub, isManager, deleteMatch, myPlayer, confirmMatch } = usePickleball();
+  const { matches, selectedClub, isManager, deleteMatch, myPlayer, confirmMatch, matchDayFilter, setMatchDayFilter } = usePickleball();
   const [editingMatch, setEditingMatch] = useState<MatchResult | null>(null);
   const [confirmationModalMatch, setConfirmationModalMatch] = useState<MatchResult | null>(null);
 
@@ -47,8 +48,8 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFormat, setSelectedFormat] = useState<'all' | GameFormat>('all');
   const [selectedImportance, setSelectedImportance] = useState<'all' | MatchImportance>('all');
-  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'yesterday' | 'custom'>('all');
-  const [customDate, setCustomDate] = useState<string>('');
+  // The day filter is shared with the standings, so it lives in the club context
+  const { mode: dateFilter, customDate } = matchDayFilter;
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [expandedMatchId, setExpandedMatchId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
@@ -137,9 +138,8 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
     setSelectedImportance(imp);
     setVisibleCount(PAGE_SIZE);
   };
-  const handleDateFilterChange = (mode: 'all' | 'today' | 'yesterday' | 'custom', customVal?: string) => {
-    setDateFilter(mode);
-    if (customVal !== undefined) setCustomDate(customVal);
+  const handleDateFilterChange = (mode: MatchDayMode, customVal?: string) => {
+    setMatchDayFilter({ mode, customDate: customVal ?? customDate });
     setVisibleCount(PAGE_SIZE);
   };
   const handleSortChange = (order: 'desc' | 'asc') => {
@@ -150,8 +150,7 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
     setSearchQuery('');
     setSelectedFormat('all');
     setSelectedImportance('all');
-    setDateFilter('all');
-    setCustomDate('');
+    setMatchDayFilter(ALL_DAYS);
     setSortOrder('desc');
     setVisibleCount(PAGE_SIZE);
   };

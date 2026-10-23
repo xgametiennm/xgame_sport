@@ -20,7 +20,7 @@ export const doublesWinRate = (player: Player): number =>
     : 0;
 
 // Matches synced from the backend can carry different ids, so fall back to the name
-const isSamePlayer = (a: Player | undefined, b: Player): boolean =>
+export const isSamePlayer = (a: Player | undefined, b: Player): boolean =>
   !!a && (a.id === b.id || a.name === b.name);
 
 export const isOnTeam = (team: MatchTeam, player: Player): boolean =>
@@ -28,6 +28,57 @@ export const isOnTeam = (team: MatchTeam, player: Player): boolean =>
 
 export const matchesOfPlayer = (matches: MatchResult[], player: Player): MatchResult[] =>
   matches.filter((m) => isOnTeam(m.team1, player) || isOnTeam(m.team2, player));
+
+const byPlayedOrder = (a: MatchResult, b: MatchResult): number =>
+  (new Date(a.date).getTime() - new Date(b.date).getTime()) ||
+  (new Date(a.createdAt || a.date).getTime() - new Date(b.createdAt || b.date).getTime()) ||
+  a.id.localeCompare(b.id);
+
+/**
+ * The members who played in `matches`, with their record (wins, losses, point
+ * difference, streak, form) recounted from those matches only. Ratings stay current;
+ * `rankDelta` carries the sign of the doubles rating change over these matches.
+ */
+export function playersWithRecordIn(players: Player[], matches: MatchResult[]): Player[] {
+  const ordered = [...matches].sort(byPlayedOrder);
+
+  return players.flatMap((player) => {
+    const played = ordered.filter((m) => isOnTeam(m.team1, player) || isOnTeam(m.team2, player));
+    if (played.length === 0) return [];
+
+    const record = {
+      matchesPlayedDoubles: 0, winsDoubles: 0, lossesDoubles: 0,
+      matchesPlayedSingles: 0, winsSingles: 0, lossesSingles: 0,
+      pointDifferential: 0, streak: 0, doublesDelta: 0,
+    };
+    const results: ('W' | 'L')[] = [];
+
+    played.forEach((m) => {
+      const onTeam1 = isOnTeam(m.team1, player);
+      const won = m.winner === (onTeam1 ? 1 : 2);
+      const diff = (m.totalScoreTeam1 - m.totalScoreTeam2) * (onTeam1 ? 1 : -1);
+      if (m.format === 'singles') {
+        record.matchesPlayedSingles += 1;
+        record[won ? 'winsSingles' : 'lossesSingles'] += 1;
+      } else {
+        record.matchesPlayedDoubles += 1;
+        record[won ? 'winsDoubles' : 'lossesDoubles'] += 1;
+        record.doublesDelta += (onTeam1 ? m.team1 : m.team2).deltaRating || 0;
+      }
+      record.pointDifferential += diff;
+      record.streak = won ? Math.max(record.streak, 0) + 1 : Math.min(record.streak, 0) - 1;
+      results.push(won ? 'W' : 'L');
+    });
+
+    const { doublesDelta, ...counts } = record;
+    return [{
+      ...player,
+      ...counts,
+      form: results.reverse().slice(0, 5), // most recent first, as the server keeps it
+      rankDelta: Math.sign(doublesDelta),
+    }];
+  });
+}
 
 export interface RelationStat {
   player: Player;

@@ -2,6 +2,9 @@ import React, { useState, useMemo } from 'react';
 import { usePickleball } from '../context/PickleballContext';
 import { Player, GameFormat } from '../types/pickleball';
 import { getDuprTier } from '../utils/duprCalculator';
+import { formatDayKey, matchesOnDay, selectedDayKey } from '../utils/matchDayFilter';
+import { playersWithRecordIn } from '../utils/playerStats';
+import { MatchDayFilterBar } from './MatchDayFilterBar';
 import { 
   Users, 
   User, 
@@ -20,14 +23,25 @@ export const ClubStandingsDesktop: React.FC<ClubStandingsDesktopProps> = ({
   onOpenRecordMatch,
   onSelectPlayer,
 }) => {
-  const { players, matches, selectedClub } = usePickleball();
+  const { players, matches, selectedClub, matchDayFilter } = usePickleball();
   const [format, setFormat] = useState<GameFormat>('doubles');
   const [sortBy, setSortBy] = useState<'rating' | 'wins'>('wins');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
+  // With a day picked, only that day's matches of this format count and only those who played are listed
+  const dayKey = selectedDayKey(matchDayFilter);
+  const dayMatches = useMemo(
+    () => matchesOnDay(matches, dayKey).filter((m) => m.format === format),
+    [matches, dayKey, format]
+  );
+  const rankedPlayers = useMemo(
+    () => (dayKey ? playersWithRecordIn(players, dayMatches) : players),
+    [players, dayMatches, dayKey]
+  );
+
   // Filter & sort players
   const sortedPlayers = useMemo(() => {
-    let list = players.filter((p) => {
+    let list = rankedPlayers.filter((p) => {
       if (!searchQuery) return true;
       return p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
              (p.email || '').toLowerCase().includes(searchQuery.toLowerCase());
@@ -49,7 +63,7 @@ export const ClubStandingsDesktop: React.FC<ClubStandingsDesktopProps> = ({
     });
 
     return list;
-  }, [players, format, sortBy, searchQuery]);
+  }, [rankedPlayers, format, sortBy, searchQuery]);
 
   const top3 = sortedPlayers.slice(0, 3);
 
@@ -309,6 +323,10 @@ export const ClubStandingsDesktop: React.FC<ClubStandingsDesktopProps> = ({
           </div>
         </div>
 
+        <div style={{ marginTop: 14 }}>
+          <MatchDayFilterBar />
+        </div>
+
         {/* Format Explanation Banner */}
         <div style={{
           marginTop: 14,
@@ -327,7 +345,8 @@ export const ClubStandingsDesktop: React.FC<ClubStandingsDesktopProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: '1rem' }}>ℹ️</span>
             <span>
-              Đang xem bảng xếp hạng: <strong style={{ color: '#064030' }}>{format === 'doubles' ? 'Đôi (Doubles 2v2)' : 'Đơn (Singles 1v1)'}</strong>.
+              Đang xem bảng xếp hạng: <strong style={{ color: '#064030' }}>{format === 'doubles' ? 'Đôi (Doubles 2v2)' : 'Đơn (Singles 1v1)'}</strong>
+              {dayKey ? <> trong ngày <strong style={{ color: '#064030' }}>{formatDayKey(dayKey)}</strong> ({dayMatches.length} trận; chỉ tính các trận của ngày này, điểm DUPR là điểm hiện tại)</> : null}.
               Các cột <em>Điểm DUPR, Thắng/Tổng, Tỷ Lệ</em> hiển thị riêng theo thể thức này.
             </span>
           </div>

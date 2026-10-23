@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { PickleballProvider, usePickleball } from './context/PickleballContext';
-import { Player } from './types/pickleball';
 import { Navbar } from './components/Navbar';
 import { HomeDashboard } from './components/HomeDashboard';
 import { MembersRoster } from './components/MembersRoster';
@@ -19,17 +18,11 @@ import { ClubSettingsMobile } from './components/ClubSettingsMobile';
 import { TournamentGenerator } from './components/TournamentGenerator';
 
 const MainContent: React.FC = () => {
-  const { activeTab, setActiveTab, lang, viewMode, myPlayer } = usePickleball();
+  const { activeTab, setActiveTab, lang, viewMode, myPlayer, viewedPlayer, openPlayer, closePlayer } = usePickleball();
   const [isCreateClubOpen, setIsCreateClubOpen] = useState(false);
   const [isJoinClubOpen, setIsJoinClubOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isRecordOpen, setIsRecordOpen] = useState(false);
-  const [selectedPlayerForDetail, setSelectedPlayerForDetail] = useState<Player | null>(null);
-
-  // Clear selected player when switching tabs
-  useEffect(() => {
-    setSelectedPlayerForDetail(null);
-  }, [activeTab]);
 
   const isMobileMode = viewMode === 'mobile';
 
@@ -55,11 +48,12 @@ const MainContent: React.FC = () => {
         flex: 1, 
         paddingBottom: isMobileMode ? 90 : 40,
       }}>
-        {selectedPlayerForDetail ? (
+        {viewedPlayer ? (
           <PlayerProfileView
-            player={selectedPlayerForDetail}
-            onClose={() => setSelectedPlayerForDetail(null)}
-            onSelectPlayer={(p) => setSelectedPlayerForDetail(p)}
+            key={viewedPlayer.id}
+            player={viewedPlayer}
+            onClose={closePlayer}
+            onSelectPlayer={openPlayer}
           />
         ) : (
           <>
@@ -67,7 +61,7 @@ const MainContent: React.FC = () => {
               <HomeDashboard
                 onOpenRecordMatch={() => setIsRecordOpen(true)}
                 onOpenSettings={() => setIsProfileOpen(true)}
-                onSelectPlayer={(p) => setSelectedPlayerForDetail(p)}
+                onSelectPlayer={openPlayer}
                 onOpenPlayMenu={() => {}}
                 onCreateClub={() => setIsCreateClubOpen(true)}
                 onJoinClub={() => setIsJoinClubOpen(true)}
@@ -75,20 +69,20 @@ const MainContent: React.FC = () => {
             )}
             {activeTab === 'members' && (
               <MembersRoster
-                onSelectPlayer={(p) => setSelectedPlayerForDetail(p)}
+                onSelectPlayer={openPlayer}
               />
             )}
             {(activeTab === 'standings' || activeTab === 'calculator') && (
               <ClubStandings 
                 onOpenRecordMatch={() => setIsRecordOpen(true)} 
-                onSelectPlayer={(p) => setSelectedPlayerForDetail(p)}
+                onSelectPlayer={openPlayer}
                 initialSubTab={activeTab === 'calculator' ? 'calculator' : 'standings'}
               />
             )}
             {activeTab === 'matches' && (
               <MatchHistory
                 onOpenRecordMatch={() => setIsRecordOpen(true)}
-                onSelectPlayer={(p) => setSelectedPlayerForDetail(p)}
+                onSelectPlayer={openPlayer}
               />
             )}
             {activeTab === 'tournament' && <TournamentGenerator />}
@@ -101,7 +95,7 @@ const MainContent: React.FC = () => {
                 <PlayerProfileView
                   player={myPlayer}
                   onEditProfile={() => setIsProfileOpen(true)}
-                  onSelectPlayer={(p) => setSelectedPlayerForDetail(p)}
+                  onSelectPlayer={openPlayer}
                 />
               ) : (
                 <div style={{ textAlign: 'center', padding: '60px 20px', color: '#64748b' }}>

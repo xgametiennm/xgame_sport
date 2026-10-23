@@ -23,7 +23,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { Avatar, MobileCard, MobilePage, PillToggle, ScreenHeader } from './MobileUi';
-import { computeRelations, isOnTeam, matchesOfPlayer, playerDisplayId, RelationStat } from '../utils/playerStats';
+import { computeRelations, isOnTeam, isSamePlayer, matchesOfPlayer, playerDisplayId, RelationStat } from '../utils/playerStats';
 
 interface PlayerProfileViewProps {
   player: Player;
@@ -189,6 +189,8 @@ export const PlayerProfileView: React.FC<PlayerProfileViewProps> = ({ player, on
         won: onTeam1 ? m.winner === 1 : m.winner === 2,
         scoreText,
         delta: mine.deltaRating,
+        // Doubles teammate in this match (none in singles)
+        partner: [mine.player1, mine.player2].find((p): p is Player => !!p && !isSamePlayer(p, player)),
         opponents: [theirs.player1, theirs.player2].filter((p): p is Player => !!p),
       };
     });
@@ -261,10 +263,11 @@ export const PlayerProfileView: React.FC<PlayerProfileViewProps> = ({ player, on
 
   const handleExport = () => {
     const rows = [
-      ['Ngày', 'Chế độ', 'Đối thủ', 'Kết quả', 'Tỉ số', 'Điểm DUPR'],
+      ['Ngày', 'Chế độ', 'Đồng đội', 'Đối thủ', 'Kết quả', 'Tỉ số', 'Điểm DUPR'],
       ...filteredHistory.map((h) => [
         new Date(h.time).toLocaleString('vi-VN'),
         MODE_META[h.match.importance].label,
+        h.partner ? h.partner.name : '',
         h.opponents.map((p) => p.name).join(' & '),
         h.won ? 'Thắng' : 'Thua',
         h.scoreText,
@@ -638,7 +641,7 @@ export const PlayerProfileView: React.FC<PlayerProfileViewProps> = ({ player, on
             }}>
               <span style={{ textAlign: 'left' }}>Ngày</span>
               <span />
-              <span style={{ textAlign: 'left' }}>Đối thủ</span>
+              <span style={{ textAlign: 'left' }}>Đồng đội / Đối thủ</span>
               <span>Kết quả</span>
               <span>Tỉ số</span>
               <span>DUPR</span>
@@ -666,15 +669,29 @@ export const PlayerProfileView: React.FC<PlayerProfileViewProps> = ({ player, on
                 <span title={MODE_META[h.match.importance].label} style={{ display: 'flex' }}>
                   {MODE_META[h.match.importance].icon}
                 </span>
-                <div
-                  onClick={() => h.opponents[0] && onSelectPlayer && onSelectPlayer(h.opponents[0])}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, cursor: onSelectPlayer ? 'pointer' : 'default' }}
-                  title={onSelectPlayer && h.opponents[0] ? `Xem hồ sơ ${h.opponents[0].name}` : undefined}
-                >
-                  {h.opponents[0] && <Avatar player={h.opponents[0]} size={26} />}
-                  <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {h.opponents.map((p) => p.name).join(' & ')}
-                  </span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                  {h.partner && (
+                    <div
+                      onClick={() => onSelectPlayer && onSelectPlayer(h.partner!)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, cursor: onSelectPlayer ? 'pointer' : 'default' }}
+                      title={onSelectPlayer ? `Xem hồ sơ ${h.partner.name}` : undefined}
+                    >
+                      <Avatar player={h.partner} size={20} />
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#047857', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        Cặp: {h.partner.name}
+                      </span>
+                    </div>
+                  )}
+                  <div
+                    onClick={() => h.opponents[0] && onSelectPlayer && onSelectPlayer(h.opponents[0])}
+                    style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, cursor: onSelectPlayer ? 'pointer' : 'default' }}
+                    title={onSelectPlayer && h.opponents[0] ? `Xem hồ sơ ${h.opponents[0].name}` : undefined}
+                  >
+                    {h.opponents[0] && <Avatar player={h.opponents[0]} size={20} />}
+                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      vs {h.opponents.map((p) => p.name).join(' & ')}
+                    </span>
+                  </div>
                 </div>
                 <span style={{
                   fontSize: '0.66rem',

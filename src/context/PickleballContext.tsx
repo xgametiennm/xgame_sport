@@ -1,8 +1,9 @@
-import React, { createContext, useCallback, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useCallback, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import { Player, MatchResult, ClubInfo, ClubRole, UserAccount, AppNotification } from '../types/pickleball';
 import { api, NewClubInput } from '../services/api';
 import { useAuth } from './AuthContext';
 import { ClubOnboarding } from '../components/ClubOnboarding';
+import { ALL_DAYS, MatchDayFilter } from '../utils/matchDayFilter';
 
 export type AppTab = 'home' | 'members' | 'standings' | 'matches' | 'calculator' | 'scoreboard' | 'tournament' | 'guide' | 'profile' | 'play' | 'clubSettings';
 export type ViewMode = 'desktop' | 'mobile';
@@ -24,6 +25,14 @@ interface PickleballContextType {
   isManager: boolean;
   activeTab: AppTab;
   setActiveTab: (tab: AppTab) => void;
+  // Member profile opened over the current tab. Opening one and switching tabs are browser
+  // history entries, so the Back button returns to the previous screen instead of leaving.
+  viewedPlayer: Player | null;
+  openPlayer: (player: Player) => void;
+  closePlayer: () => void;
+  // Day picked in the match history; the standings follow the same day
+  matchDayFilter: MatchDayFilter;
+  setMatchDayFilter: (filter: MatchDayFilter) => void;
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;
   lang: 'vi' | 'en';
@@ -56,6 +65,27 @@ const PickleballContext = createContext<PickleballContextType | undefined>(undef
 
 const CLUB_QUERY_PARAM = 'club';
 const JOIN_QUERY_PARAM = 'join';
+const TAB_QUERY_PARAM = 'tab';
+
+const APP_TABS: AppTab[] = ['home', 'members', 'standings', 'matches', 'calculator', 'scoreboard', 'tournament', 'guide', 'profile', 'play', 'clubSettings'];
+
+// What each browser history entry of the app holds
+interface NavState {
+  tab: AppTab;
+  player: Player | null;
+}
+
+const tabFromUrl = (): AppTab => {
+  const tab = new URLSearchParams(window.location.search).get(TAB_QUERY_PARAM) as AppTab | null;
+  return tab && APP_TABS.includes(tab) ? tab : 'home';
+};
+
+const urlForTab = (tab: AppTab): URL => {
+  const url = new URL(window.location.href);
+  if (tab === 'home') url.searchParams.delete(TAB_QUERY_PARAM);
+  else url.searchParams.set(TAB_QUERY_PARAM, tab);
+  return url;
+};
 
 const errorMessage = (err: unknown): string =>
   err instanceof Error ? err.message : 'Đã xảy ra lỗi không xác định';
@@ -64,7 +94,8 @@ const setQueryParam = (name: string, value: string | null) => {
   const url = new URL(window.location.href);
   if (value === null) url.searchParams.delete(name);
   else url.searchParams.set(name, value);
-  window.history.replaceState(null, '', url);
+  // Keep the entry's navigation state; only the address changes
+  window.history.replaceState(window.history.state, '', url);
 };
 
 const StatusScreen: React.FC<{ message: string; onRetry?: () => void }> = ({ message, onRetry }) => (
@@ -108,7 +139,49 @@ export const PickleballProvider: React.FC<{ user: UserAccount; children: React.R
   const [loadedClubId, setLoadedClubId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<AppTab>('home');
+  const [activeTab, setActiveTabState] = useState<AppTab>(() => (window.history.state as NavState | null)?.tab ?? tabFromUrl());
+  const [viewedPlayer, setViewedPlayer] = useState<Player | null>(() => (window.history.state as NavState | null)?.player ?? null);
+
+  // A page opened straight on an inner tab (shared link, bookmark) gets Home beneath it,
+  // so Back goes to Home first rather than off the site
+  const historySeeded = useRef(false);
+  useEffect(() => {
+    if (historySeeded.current || window.history.state) return;
+    historySeeded.current = true;
+    const tab = tabFromUrl();
+    window.history.replaceState({ tab: 'home', player: null } satisfies NavState, '', urlForTab('home'));
+    if (tab !== 'home') window.history.pushState({ tab, player: null } satisfies NavState, '', urlForTab(tab));
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      const state = e.state as NavState | null;
+      setActiveTabState(state?.tab ?? tabFromUrl());
+      setViewedPlayer(state?.player ?? null);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigate = useCallback((tab: AppTab, player: Player | null) => {
+    window.history.pushState({ tab, player } satisfies NavState, '', urlForTab(tab));
+    setActiveTabState(tab);
+    setViewedPlayer(player);
+    window.scrollTo(0, 0);
+  }, []);
+
+  const setActiveTab = useCallback((tab: AppTab) => {
+    if (tab !== activeTab || viewedPlayer) navigate(tab, null);
+  }, [activeTab, viewedPlayer, navigate]);
+
+  const openPlayer = useCallback((player: Player) => navigate(activeTab, player), [activeTab, navigate]);
+
+  // Closing a profile is the same as pressing Back when the profile has its own entry
+  const closePlayer = useCallback(() => {
+    if ((window.history.state as NavState | null)?.player) window.history.back();
+    else setViewedPlayer(null);
+  }, []);
+  const [matchDayFilter, setMatchDayFilter] = useState<MatchDayFilter>(ALL_DAYS);
   const [lang, setLang] = useState<'vi' | 'en'>('vi');
   const [viewMode, setViewMode] = useState<ViewMode>(() => (window.innerWidth < 768 ? 'mobile' : 'desktop'));
 
@@ -378,6 +451,12 @@ export const PickleballProvider: React.FC<{ user: UserAccount; children: React.R
         isManager: selectedClub.myRole === 'owner' || selectedClub.myRole === 'admin',
         activeTab,
         setActiveTab,
+        // The history entry keeps a snapshot; show the member's current record when they are loaded
+        viewedPlayer: viewedPlayer ? players.find((p) => p.id === viewedPlayer.id) ?? viewedPlayer : null,
+        openPlayer,
+        closePlayer,
+        matchDayFilter,
+        setMatchDayFilter,
         viewMode,
         setViewMode,
         lang,
