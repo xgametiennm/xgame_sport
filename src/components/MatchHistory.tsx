@@ -19,7 +19,11 @@ import {
   AlertTriangle,
   Clock,
   ShieldAlert,
-  Lock
+  Lock,
+  ArrowUpDown,
+  CalendarDays,
+  X,
+  RotateCcw
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { EditMatchModal } from './EditMatchModal';
@@ -43,8 +47,63 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFormat, setSelectedFormat] = useState<'all' | GameFormat>('all');
   const [selectedImportance, setSelectedImportance] = useState<'all' | MatchImportance>('all');
+  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'yesterday' | 'custom'>('all');
+  const [customDate, setCustomDate] = useState<string>('');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [expandedMatchId, setExpandedMatchId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  // Helper to extract YYYY-MM-DD in user's local timezone
+  const toLocalDateKey = (dStr?: string) => {
+    if (!dStr) return '';
+    try {
+      const d = new Date(dStr);
+      if (isNaN(d.getTime())) return '';
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    } catch {
+      return '';
+    }
+  };
+
+  const todayKey = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  const yesterdayKey = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  const formatDisplayDate = (dateKey: string) => {
+    if (!dateKey) return '';
+    try {
+      const parts = dateKey.split('-');
+      if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+      return dateKey;
+    } catch {
+      return dateKey;
+    }
+  };
+
+  // Quick stats by date. A match belongs to the day it was played, not the day it was saved
+  // (a session finished after midnight still counts for the day it was played).
+  const countsByDate = useMemo(() => {
+    let todayCount = 0;
+    let yesterdayCount = 0;
+    matches.forEach((m) => {
+      const day = toLocalDateKey(m.date);
+      if (day === todayKey) todayCount++;
+      if (day === yesterdayKey) yesterdayCount++;
+    });
+    return { todayCount, yesterdayCount };
+  }, [matches, todayKey, yesterdayKey]);
 
   const handleDeleteMatch = async (match: MatchResult) => {
     const s1 = match.sets && match.sets.length > 0 ? match.sets[0].team1 : match.totalScoreTeam1;
@@ -78,17 +137,42 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
     setSelectedImportance(imp);
     setVisibleCount(PAGE_SIZE);
   };
+  const handleDateFilterChange = (mode: 'all' | 'today' | 'yesterday' | 'custom', customVal?: string) => {
+    setDateFilter(mode);
+    if (customVal !== undefined) setCustomDate(customVal);
+    setVisibleCount(PAGE_SIZE);
+  };
+  const handleSortChange = (order: 'desc' | 'asc') => {
+    setSortOrder(order);
+    setVisibleCount(PAGE_SIZE);
+  };
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setSelectedFormat('all');
+    setSelectedImportance('all');
+    setDateFilter('all');
+    setCustomDate('');
+    setSortOrder('desc');
+    setVisibleCount(PAGE_SIZE);
+  };
 
-  // Filtered matches
+  // Filtered and sorted matches
   const filteredMatches = useMemo(() => {
-    return matches.filter((m) => {
+    const list = matches.filter((m) => {
       // Filter format
       if (selectedFormat !== 'all' && m.format !== selectedFormat) return false;
 
       // Filter importance
       if (selectedImportance !== 'all' && m.importance !== selectedImportance) return false;
 
-      // Search player name
+      // Filter by the day the match was played
+      const wantedDay = dateFilter === 'today' ? todayKey
+        : dateFilter === 'yesterday' ? yesterdayKey
+        : dateFilter === 'custom' ? customDate
+        : '';
+      if (wantedDay && toLocalDateKey(m.date) !== wantedDay) return false;
+
+      // Search player name, court, notes
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase().trim();
         const p1 = m.team1.player1?.name?.toLowerCase() || '';
@@ -105,7 +189,21 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
 
       return true;
     });
-  }, [matches, selectedFormat, selectedImportance, searchQuery]);
+
+    // Sort: 'asc' = đúng thứ tự lần lượt các trận được nhập (Cũ -> Mới), 'desc' = Mới nhất trước
+    list.sort((a, b) => {
+      const timeA = new Date(a.createdAt || a.date).getTime() || 0;
+      const timeB = new Date(b.createdAt || b.date).getTime() || 0;
+      if (timeA !== timeB) {
+        return sortOrder === 'asc' ? timeA - timeB : timeB - timeA;
+      }
+      return sortOrder === 'asc'
+        ? (a.id || '').localeCompare(b.id || '')
+        : (b.id || '').localeCompare(a.id || '');
+    });
+
+    return list;
+  }, [matches, selectedFormat, selectedImportance, searchQuery, dateFilter, customDate, sortOrder, todayKey, yesterdayKey]);
 
   const visibleMatches = useMemo(() => {
     return filteredMatches.slice(0, visibleCount);
@@ -298,98 +396,322 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
         border: '1px solid #e2e8f0',
         marginBottom: 20,
         display: 'flex',
-        flexWrap: 'wrap',
-        alignItems: 'center',
-        justifyContent: 'space-between',
+        flexDirection: 'column',
         gap: 14,
         boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
       }}>
-        {/* Search input */}
-        <div style={{ position: 'relative', flex: '1 1 280px', minWidth: 240 }}>
-          <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: 14, top: 11 }} />
-          <input
-            type="text"
-            placeholder="Tìm theo tên VĐV, tên sân, ghi chú trận..."
-            value={searchQuery}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="input-light"
-            style={{ paddingLeft: 40, width: '100%', borderRadius: 12, fontSize: '0.88rem' }}
-          />
+        {/* Row 1: Search & Format & Importance */}
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+        }}>
+          {/* Search input */}
+          <div style={{ position: 'relative', flex: '1 1 280px', minWidth: 240 }}>
+            <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: 14, top: 11 }} />
+            <input
+              type="text"
+              placeholder="Tìm theo tên VĐV, tên sân, ghi chú trận..."
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="input-light"
+              style={{ paddingLeft: 40, paddingRight: searchQuery ? 36 : 14, width: '100%', borderRadius: 12, fontSize: '0.88rem' }}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => handleSearchChange('')}
+                style={{
+                  position: 'absolute',
+                  right: 10,
+                  top: 10,
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#94a3b8',
+                  padding: 2,
+                }}
+                title="Xóa tìm kiếm"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+
+          {/* Format Filter Buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f1f5f9', padding: 4, borderRadius: 12 }}>
+            <button
+              onClick={() => handleFormatChange('all')}
+              style={{
+                padding: '6px 14px',
+                borderRadius: 8,
+                border: 'none',
+                fontSize: '0.82rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                background: selectedFormat === 'all' ? '#ffffff' : 'transparent',
+                color: selectedFormat === 'all' ? '#0f172a' : '#64748b',
+                boxShadow: selectedFormat === 'all' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+              }}
+            >
+              Tất Cả Thể Thức
+            </button>
+            <button
+              onClick={() => handleFormatChange('doubles')}
+              style={{
+                padding: '6px 14px',
+                borderRadius: 8,
+                border: 'none',
+                fontSize: '0.82rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                background: selectedFormat === 'doubles' ? '#ffffff' : 'transparent',
+                color: selectedFormat === 'doubles' ? '#059669' : '#64748b',
+                boxShadow: selectedFormat === 'doubles' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+              }}
+            >
+              🎾 Đánh Đôi
+            </button>
+            <button
+              onClick={() => handleFormatChange('singles')}
+              style={{
+                padding: '6px 14px',
+                borderRadius: 8,
+                border: 'none',
+                fontSize: '0.82rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                background: selectedFormat === 'singles' ? '#ffffff' : 'transparent',
+                color: selectedFormat === 'singles' ? '#2563eb' : '#64748b',
+                boxShadow: selectedFormat === 'singles' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+              }}
+            >
+              👤 Đánh Đơn
+            </button>
+          </div>
+
+          {/* Importance Filter */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <select
+              value={selectedImportance}
+              onChange={(e) => handleImportanceChange(e.target.value as any)}
+              className="input-light"
+              style={{
+                padding: '8px 12px',
+                borderRadius: 10,
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                color: '#334155',
+                cursor: 'pointer',
+              }}
+            >
+              <option value="all">Tất cả mức độ</option>
+              <option value="league">Giải CLB (League)</option>
+              <option value="casual">Giao hữu (Casual)</option>
+              <option value="sanctioned">Giải chính thức (Sanctioned)</option>
+            </select>
+          </div>
         </div>
 
-        {/* Format Filter Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f1f5f9', padding: 4, borderRadius: 12 }}>
-          <button
-            onClick={() => handleFormatChange('all')}
-            style={{
-              padding: '6px 14px',
+        {/* Row 2: Date Filter & Sort Order Controls */}
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          paddingTop: 12,
+          borderTop: '1px solid #f1f5f9',
+        }}>
+          {/* Left: Date Filter Options */}
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#475569', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <CalendarDays size={15} color="#059669" />
+              Lọc theo ngày:
+            </span>
+
+            <button
+              onClick={() => handleDateFilterChange('all')}
+              style={{
+                padding: '6px 12px',
+                borderRadius: 8,
+                fontSize: '0.8rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                border: dateFilter === 'all' ? '1px solid #059669' : '1px solid #e2e8f0',
+                background: dateFilter === 'all' ? '#ecfdf5' : '#f8fafc',
+                color: dateFilter === 'all' ? '#059669' : '#475569',
+              }}
+            >
+              Tất cả ngày ({matches.length})
+            </button>
+
+            <button
+              onClick={() => handleDateFilterChange('today')}
+              style={{
+                padding: '6px 12px',
+                borderRadius: 8,
+                fontSize: '0.8rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                border: dateFilter === 'today' ? '1px solid #059669' : '1px solid #e2e8f0',
+                background: dateFilter === 'today' ? '#ecfdf5' : '#f8fafc',
+                color: dateFilter === 'today' ? '#059669' : '#475569',
+              }}
+            >
+              Hôm nay ({countsByDate.todayCount})
+            </button>
+
+            <button
+              onClick={() => handleDateFilterChange('yesterday')}
+              style={{
+                padding: '6px 12px',
+                borderRadius: 8,
+                fontSize: '0.8rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                border: dateFilter === 'yesterday' ? '1px solid #059669' : '1px solid #e2e8f0',
+                background: dateFilter === 'yesterday' ? '#ecfdf5' : '#f8fafc',
+                color: dateFilter === 'yesterday' ? '#059669' : '#475569',
+              }}
+            >
+              Hôm qua ({countsByDate.yesterdayCount})
+            </button>
+
+            {/* Custom Date Picker */}
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '3px 8px',
               borderRadius: 8,
-              border: 'none',
-              fontSize: '0.82rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-              background: selectedFormat === 'all' ? '#ffffff' : 'transparent',
-              color: selectedFormat === 'all' ? '#0f172a' : '#64748b',
-              boxShadow: selectedFormat === 'all' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-            }}
-          >
-            Tất Cả Thể Thức
-          </button>
-          <button
-            onClick={() => handleFormatChange('doubles')}
-            style={{
-              padding: '6px 14px',
-              borderRadius: 8,
-              border: 'none',
-              fontSize: '0.82rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-              background: selectedFormat === 'doubles' ? '#ffffff' : 'transparent',
-              color: selectedFormat === 'doubles' ? '#059669' : '#64748b',
-              boxShadow: selectedFormat === 'doubles' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-            }}
-          >
-            🎾 Đánh Đôi
-          </button>
-          <button
-            onClick={() => handleFormatChange('singles')}
-            style={{
-              padding: '6px 14px',
-              borderRadius: 8,
-              border: 'none',
-              fontSize: '0.82rem',
-              fontWeight: 800,
-              cursor: 'pointer',
-              background: selectedFormat === 'singles' ? '#ffffff' : 'transparent',
-              color: selectedFormat === 'singles' ? '#2563eb' : '#64748b',
-              boxShadow: selectedFormat === 'singles' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-            }}
-          >
-            👤 Đánh Đơn
-          </button>
+              border: dateFilter === 'custom' ? '1px solid #059669' : '1px solid #cbd5e1',
+              background: dateFilter === 'custom' ? '#ecfdf5' : '#ffffff',
+            }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: dateFilter === 'custom' ? '#059669' : '#64748b' }}>
+                Chọn ngày:
+              </span>
+              <input
+                type="date"
+                value={customDate}
+                onChange={(e) => handleDateFilterChange('custom', e.target.value)}
+                style={{
+                  border: 'none',
+                  outline: 'none',
+                  background: 'transparent',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  color: '#1e293b',
+                  cursor: 'pointer',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Right: Sort Order Segmented Control */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#475569', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <ArrowUpDown size={14} color="#64748b" />
+              Thứ tự:
+            </span>
+            <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: 3, borderRadius: 10 }}>
+              <button
+                onClick={() => handleSortChange('desc')}
+                title="Hiển thị các trận đấu ghi nhận gần đây nhất lên đầu"
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: 7,
+                  border: 'none',
+                  fontSize: '0.78rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  background: sortOrder === 'desc' ? '#ffffff' : 'transparent',
+                  color: sortOrder === 'desc' ? '#0f172a' : '#64748b',
+                  boxShadow: sortOrder === 'desc' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                }}
+              >
+                🕒 Mới nhất trước
+              </button>
+              <button
+                onClick={() => handleSortChange('asc')}
+                title="Hiển thị đúng lần lượt theo thứ tự các trận được nhập tỉ số (Trận #1 → Trận #2...)"
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: 7,
+                  border: 'none',
+                  fontSize: '0.78rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  background: sortOrder === 'asc' ? '#059669' : 'transparent',
+                  color: sortOrder === 'asc' ? '#ffffff' : '#64748b',
+                  boxShadow: sortOrder === 'asc' ? '0 1px 3px rgba(5,150,105,0.3)' : 'none',
+                }}
+              >
+                🔢 Lần lượt nhập (Cũ → Mới)
+              </button>
+            </div>
+          </div>
         </div>
 
-        {/* Importance Filter */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <select
-            value={selectedImportance}
-            onChange={(e) => handleImportanceChange(e.target.value as any)}
-            className="input-light"
-            style={{
-              padding: '8px 12px',
-              borderRadius: 10,
-              fontSize: '0.82rem',
-              fontWeight: 700,
-              color: '#334155',
-              cursor: 'pointer',
-            }}
-          >
-            <option value="all">Tất cả mức độ</option>
-            <option value="league">Giải CLB (League)</option>
-            <option value="casual">Giao hữu (Casual)</option>
-            <option value="sanctioned">Giải chính thức (Sanctioned)</option>
-          </select>
-        </div>
+        {/* Active filter summary bar */}
+        {(dateFilter !== 'all' || searchQuery || selectedFormat !== 'all' || selectedImportance !== 'all') && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 8,
+            padding: '8px 12px',
+            background: '#f8fafc',
+            borderRadius: 10,
+            border: '1px dashed #cbd5e1',
+            fontSize: '0.8rem',
+            color: '#334155',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 800, color: '#059669' }}>
+                ✓ Đang hiển thị: {filteredMatches.length} trận
+              </span>
+              {dateFilter === 'today' && (
+                <span style={{ background: '#ecfdf5', color: '#059669', padding: '2px 8px', borderRadius: 6, fontWeight: 700 }}>
+                  📅 Hôm nay ({formatDisplayDate(todayKey)})
+                </span>
+              )}
+              {dateFilter === 'yesterday' && (
+                <span style={{ background: '#ecfdf5', color: '#059669', padding: '2px 8px', borderRadius: 6, fontWeight: 700 }}>
+                  📅 Hôm qua ({formatDisplayDate(yesterdayKey)})
+                </span>
+              )}
+              {dateFilter === 'custom' && customDate && (
+                <span style={{ background: '#ecfdf5', color: '#059669', padding: '2px 8px', borderRadius: 6, fontWeight: 700 }}>
+                  📅 Ngày {formatDisplayDate(customDate)}
+                </span>
+              )}
+              <span style={{ background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: 6, fontWeight: 700 }}>
+                {sortOrder === 'asc' ? '🔢 Thứ tự: Lần lượt nhập (Trận #1 → #N)' : '🕒 Thứ tự: Mới nhất trước'}
+              </span>
+            </div>
+
+            <button
+              onClick={handleResetFilters}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                border: 'none',
+                background: 'transparent',
+                color: '#dc2626',
+                fontWeight: 700,
+                fontSize: '0.78rem',
+                cursor: 'pointer',
+              }}
+            >
+              <RotateCcw size={12} />
+              Đặt lại bộ lọc
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 4. MATCH LIST CARDS */}
@@ -418,7 +740,7 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {visibleMatches.map((match) => {
+          {visibleMatches.map((match, index) => {
             const isTeam1Winner = match.winner === 1;
             const isExpanded = expandedMatchId === match.id;
             const team1Delta = match.team1.deltaRating;
@@ -478,6 +800,25 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
                   gap: 10,
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    {/* Match Order Index Badge */}
+                    <span
+                      title={`Trận thứ ${sortOrder === 'asc' ? index + 1 : filteredMatches.length - index} theo thứ tự lưu kết quả`}
+                      style={{
+                        padding: '3px 9px',
+                        borderRadius: 6,
+                        fontSize: '0.75rem',
+                        fontWeight: 900,
+                        background: '#0f172a',
+                        color: '#ffffff',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 3,
+                        boxShadow: '0 1px 2px rgba(15,23,42,0.15)',
+                      }}
+                    >
+                      Trận #{sortOrder === 'asc' ? index + 1 : filteredMatches.length - index}
+                    </span>
+
                     {/* Format Badge */}
                     <span style={{
                       padding: '4px 10px',
@@ -609,6 +950,11 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>
                       <Calendar size={14} />
                       <span>{formatDate(match.date)}</span>
+                      {match.createdAt && match.createdAt !== match.date && (
+                        <span style={{ fontSize: '0.72rem', color: '#94a3b8' }} title={`Thời điểm lưu kết quả: ${formatDate(match.createdAt)}`}>
+                          (Lưu: {formatDate(match.createdAt)})
+                        </span>
+                      )}
                     </div>
 
                     {(canEdit || canDelete || (isCreator && hasOtherConfirmations && !isManager)) && (
@@ -1267,14 +1613,14 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
             );
           })}
 
-          {/* Load More Button */}
+          {/* Load More & View All Buttons */}
           {filteredMatches.length > visibleCount && (
-            <div style={{ textAlign: 'center', marginTop: 12, marginBottom: 12 }}>
+            <div style={{ textAlign: 'center', marginTop: 14, marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, flexWrap: 'wrap' }}>
               <button
                 onClick={() => setVisibleCount((prev) => prev + PAGE_SIZE)}
                 className="btn-secondary"
                 style={{
-                  padding: '12px 28px',
+                  padding: '12px 24px',
                   borderRadius: 14,
                   fontSize: '0.88rem',
                   fontWeight: 800,
@@ -1286,6 +1632,21 @@ export const MatchHistory: React.FC<MatchHistoryProps> = ({ onOpenRecordMatch, o
                 }}
               >
                 Xem thêm {Math.min(PAGE_SIZE, filteredMatches.length - visibleCount)} trận tiếp theo (còn {filteredMatches.length - visibleCount} trận)
+              </button>
+              <button
+                onClick={() => setVisibleCount(filteredMatches.length)}
+                style={{
+                  padding: '12px 20px',
+                  borderRadius: 14,
+                  fontSize: '0.88rem',
+                  fontWeight: 800,
+                  color: '#475569',
+                  border: '1.5px solid #cbd5e1',
+                  background: '#ffffff',
+                  cursor: 'pointer',
+                }}
+              >
+                Xem toàn bộ ({filteredMatches.length} trận)
               </button>
             </div>
           )}

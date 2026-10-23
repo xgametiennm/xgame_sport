@@ -26,6 +26,7 @@ function toMatch(row, playersById) {
     id: row.id,
     clubId: row.club_id,
     date: row.match_date,
+    createdAt: row.created_at || row.match_date,
     format: row.format,
     importance: row.importance,
     courtName: row.court_name,
@@ -65,7 +66,7 @@ async function loadPlayersById(runner, rows) {
 
 async function getMatches(req, res) {
   try {
-    const { clubId, limit: queryLimit, page } = req.query;
+    const { clubId, limit: queryLimit, page, sort = 'desc' } = req.query;
     let queryText = 'SELECT * FROM matches';
     const params = [];
     if (clubId) {
@@ -75,7 +76,8 @@ async function getMatches(req, res) {
 
     const limit = Math.max(1, Math.min(500, parseInt(queryLimit, 10) || 500));
     params.push(limit);
-    queryText += ` ORDER BY match_date DESC LIMIT $${params.length}`;
+    const orderDirection = sort === 'asc' ? 'ASC' : 'DESC';
+    queryText += ` ORDER BY match_date ${orderDirection}, created_at ${orderDirection}, id ${orderDirection} LIMIT $${params.length}`;
 
     if (page && parseInt(page, 10) > 1) {
       const offset = (parseInt(page, 10) - 1) * limit;

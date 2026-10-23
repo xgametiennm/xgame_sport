@@ -74,6 +74,7 @@ export interface MatchResult {
   createdByUserId?: string | null;
   createdByPlayerId?: string | null;
   createdByName?: string | null;
+  createdAt?: string;
 }
 
 export interface MatchAppeal {

@@ -246,17 +246,20 @@ export const PlaySessionMobile: React.FC<PlaySessionMobileProps> = ({ session, o
         const team1 = lineup.slice(0, perTeam) as Player[];
         const team2 = lineup.slice(perTeam) as Player[];
 
-        await recordNewMatch(buildMatchResult({
-          id: `match-${m.id}`,
-          date: new Date(`${session.date}T${m.time}`).toISOString(),
-          format: session.format,
-          importance: session.mode === 'friendly' ? 'casual' : 'league',
-          courtName: `${selectedClub.name} - Sân ${m.court}`,
-          team1: [team1[0], team1[1]],
-          team2: [team2[0], team2[1]],
-          score1: m.score1!,
-          score2: m.score2!,
-        }));
+        await recordNewMatch({
+          ...buildMatchResult({
+            id: `match-${m.id}`,
+            date: new Date(`${session.date}T${m.time}`).toISOString(),
+            format: session.format,
+            importance: session.mode === 'friendly' ? 'casual' : 'league',
+            courtName: `${selectedClub.name} - Sân ${m.court}`,
+            team1: [team1[0], team1[1]],
+            team2: [team2[0], team2[1]],
+            score1: m.score1!,
+            score2: m.score2!,
+          }),
+          isSubsequentMatch: true,
+        });
         // Drop it from the session right away so a retry never saves the same match twice
         updateMatches((current) => current.matches.filter((x) => x.id !== m.id));
         saved += 1;
